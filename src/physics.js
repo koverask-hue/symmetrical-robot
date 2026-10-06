@@ -53,6 +53,13 @@ export class Physics {
         if (n) c.combineVoxelStates(n, dx * CHUNK, dy * CHUNK, dz * CHUNK);
       }
     }
+    // Invisible walls around the playable area.
+    const sx = w.sx * VOXEL, sz = w.sz * VOXEL, H = 30, T = 1;
+    for (const [x, z, hx, hz] of [[-T, sz / 2, T, sz / 2 + T], [sx + T, sz / 2, T, sz / 2 + T], [sx / 2, -T, sx / 2 + T, T], [sx / 2, sz + T, sx / 2 + T, T]]) {
+      const body = this.pw.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, H / 2, z));
+      const c = this.pw.createCollider(RAPIER.ColliderDesc.cuboid(hx, H / 2, hz), body);
+      this.owners.set(c.handle, { kind: 'world', ref: -1 });
+    }
     w.edits.length = 0;
   }
 

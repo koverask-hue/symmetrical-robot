@@ -188,8 +188,8 @@ export class Billboards {
       uniforms: {
         map: { value: texture },
         uSun: { value: sunDir ? sunDir.clone() : new THREE.Vector3(0, 1, 0) },
-        fogColor: { value: new THREE.Color(0xb9c4cf) },
-        fogDensity: { value: 0.0065 },
+        fogColor: { value: new THREE.Color(0xaebdcc) },
+        fogDensity: { value: 0.0052 },
       },
       defines: lit ? { LIT: 1 } : {},
       vertexShader: /* glsl */ `
@@ -218,7 +218,7 @@ export class Billboards {
           vec3 c = vCol.rgb * t.rgb;
           #ifdef LIT
             c *= vShade;
-            float f = 1.0 - exp(-fogDensity * fogDensity * vFog * vFog);
+            float f = 1.0 - exp(-fogDensity * vFog);
             c = mix(c, fogColor, f);
           #endif
           gl_FragColor = vec4(c, a);

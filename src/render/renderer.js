@@ -17,7 +17,51 @@ export const QUALITY = {
   ultra: { scale: 1.0, shadow: 4096, msaa: 4, bloom: true, gtao: true, lights: 6 },
 };
 
-const MAX_DPR = 2; // Retina; beyond 2x the extra pixels are invisible at game distances
+const MAX_DPR = 2;
+export const FOG_DENSITY = 0.0052;
+export const FOG_FALLOFF = 0.11;
+
+/**
+ * Replace three's fog with exponential height fog (denser near the ground)
+ * that picks up the sun's colour when looking towards it. The sun is static,
+ * so its direction and colour are baked in as constants. FogExp2's density
+ * is reused as the ground-level extinction coefficient.
+ */
+function installAtmosphere(sunDir, sunColor) {
+  const v3 = (v) => `vec3(${v.x.toFixed(5)}, ${v.y.toFixed(5)}, ${v.z.toFixed(5)})`;
+  const c3 = (c) => `vec3(${c.r.toFixed(4)}, ${c.g.toFixed(4)}, ${c.b.toFixed(4)})`;
+  const C = THREE.ShaderChunk;
+  C.fog_pars_vertex = '#ifdef USE_FOG\n\tvarying float vFogDepth;\n\tvarying vec3 vFogRay;\n#endif';
+  // mvPosition rotated back to world space: the camera-to-fragment vector.
+  C.fog_vertex = '#ifdef USE_FOG\n\tvFogDepth = - mvPosition.z;\n\tvFogRay = ( vec4( mvPosition.xyz, 0.0 ) * viewMatrix ).xyz;\n#endif';
+  C.fog_pars_fragment = `#ifdef USE_FOG
+    uniform vec3 fogColor;
+    varying float vFogDepth;
+    varying vec3 vFogRay;
+    #ifdef FOG_EXP2
+      uniform float fogDensity;
+    #else
+      uniform float fogNear;
+      uniform float fogFar;
+    #endif
+  #endif`;
+  C.fog_fragment = `#ifdef USE_FOG
+    #ifdef FOG_EXP2
+      float fogDist = length( vFogRay );
+      vec3 fogDir = vFogRay / max( fogDist, 1e-4 );
+      float fy = fogDir.y * ${FOG_FALLOFF.toFixed(3)} * fogDist;
+      float fogAmt = fogDensity * exp( - max( cameraPosition.y, 0.0 ) * ${FOG_FALLOFF.toFixed(3)} ) * fogDist
+        * ( abs( fy ) > 1e-3 ? ( 1.0 - exp( - fy ) ) / fy : 1.0 );
+      float fogFactor = 1.0 - exp( - fogAmt );
+      float sunAmt = pow( max( dot( fogDir, ${v3(sunDir)} ), 0.0 ), 8.0 );
+      vec3 fogCol = mix( fogColor, ${c3(sunColor)}, sunAmt * 0.85 );
+    #else
+      float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+      vec3 fogCol = fogColor;
+    #endif
+    gl_FragColor.rgb = mix( gl_FragColor.rgb, fogCol, fogFactor );
+  #endif`;
+} // Retina; beyond 2x the extra pixels are invisible at game distances
 
 const GradeShader = {
   uniforms: {
@@ -85,7 +129,7 @@ export function makeVoxelMaterial(timeUniform) {
         }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         float edge = voxelEdge();
-        diffuseColor.rgb *= 1.0 - 0.13 * edge;`)
+        diffuseColor.rgb *= 1.0 - 0.1 * edge;`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(vSurf.x + edge * 0.1, 0.03, 1.0);')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = vSurf.y;')
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
@@ -188,7 +232,44 @@ export class Renderer {
     this.scene.environmentIntensity = 0.4;
     pm.dispose();
 
-    this.scene.fog = new THREE.FogExp2(0xb9c4cf, 0.0065);
+    this.scene.fog = new THREE.FogExp2(0xaebdcc, FOG_DENSITY);
+    installAtmosphere(this.sunDir, new THREE.Color(0xffd29a).multiplyScalar(1.6));
+    this.buildSurroundings();
+  }
+
+  // Ground that continues past the playable area and a ring of distant
+  // hills, so the town sits in a landscape instead of floating in haze.
+  buildSurroundings() {
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), new THREE.MeshStandardMaterial({ color: 0x55803a, roughness: 1 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(32, 1.0, 32);
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+    const seg = 160, rings = 6;
+    const pos = [], col = [], idx = [];
+    const c = new THREE.Color();
+    for (let r = 0; r <= rings; r++) {
+      const rad = 150 + r * 45;
+      for (let i = 0; i <= seg; i++) {
+        const a = (i / seg) * Math.PI * 2;
+        const n = Math.sin(a * 3 + r) * 0.5 + Math.sin(a * 7.3 + r * 2.1) * 0.3 + Math.sin(a * 17.1 + r * 0.7) * 0.2;
+        const h = r === 0 ? 0 : Math.max(0, (8 + r * 7) * (0.55 + 0.45 * n));
+        pos.push(32 + Math.cos(a) * rad, 1 + h, 32 + Math.sin(a) * rad);
+        c.setHSL(0.27 + n * 0.03, 0.32, 0.22 + h * 0.003);
+        col.push(c.r, c.g, c.b);
+      }
+    }
+    for (let r = 0; r < rings; r++)
+      for (let i = 0; i < seg; i++) {
+        const a = r * (seg + 1) + i, b = a + seg + 1;
+        idx.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    this.scene.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true })));
   }
 
   setupLights() {

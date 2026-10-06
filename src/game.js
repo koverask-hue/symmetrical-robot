@@ -155,7 +155,7 @@ export class Game {
       },
       explosion: (p, power) => {
         this.fx.explosion(p, power);
-        this.renderer.flash(p, 0xff9a4a, 900 * power, 0.5);
+        this.renderer.flash(p, 0xff9a4a, 220 * power, 0.45);
         const d = this.dist(p);
         this.audio.explosion(p, power, d);
         this.addTrauma(Math.min(1, power * 1.6 * this.falloff(p, 35)));
@@ -415,7 +415,7 @@ export class Game {
     this.damageFlash = Math.max(0, this.damageFlash - dt * 1.5);
     this.whiteFlash = Math.max(0, this.whiteFlash - dt * 3);
     this.renderer.render(dt, {
-      aberration: s * 0.02 + this.damageFlash * 0.01,
+      aberration: s * 0.004 + this.damageFlash * 0.003,
       damage: this.damageFlash * 0.7 + (this.player.health < 30 ? 0.25 + Math.sin(this.time * 6) * 0.1 : 0),
       flash: this.whiteFlash,
     });
@@ -437,9 +437,9 @@ export class Game {
     if (L && L.userData.life > 0 && L.userData.owner === 'fire') {
       L.position.lerp(new THREE.Vector3(...c), Math.min(1, dt * 4));
       L.userData.life = L.userData.max = 0.3;
-      L.userData.base = Math.min(160, 25 + n * 1.2);
+      L.userData.base = Math.min(30, 5 + n * 0.08);
     } else {
-      this.fireLight = this.renderer.flash(c, 0xff7a2a, Math.min(160, 25 + n * 1.2), 0.3, 0.35);
+      this.fireLight = this.renderer.flash(c, 0xff7a2a, Math.min(30, 5 + n * 0.08), 0.3, 0.35);
       this.fireLight.userData.owner = 'fire';
     }
     if (n > FIRE_ALARM_AT) this.alarm('FIRE ALARM — the fire brigade is coming');

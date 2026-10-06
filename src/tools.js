@@ -26,7 +26,7 @@ function part(geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) {
 
 // Hand-built viewmodels; small primitive kits read well at this size.
 function buildModels() {
-  const steel = std(0x9aa3ab, 0.32, 1);
+  const steel = std(0x5f666e, 0.48, 0.9);
   const dark = std(0x2b2e33, 0.45, 0.8);
   const wood = std(0x7a4b28, 0.7);
   const red = std(0xb3241c, 0.35, 0.2);
@@ -184,7 +184,7 @@ export class Tools {
       g.audio.shot([e[0], e[1], e[2]]);
       const muzzle = [e[0] + f[0] * 0.6, e[1] + f[1] * 0.6 - 0.1, e[2] + f[2] * 0.6];
       g.fx.muzzle(muzzle, f);
-      g.renderer.flash(muzzle, 0xffc070, 30, 0.08);
+      g.renderer.flash(muzzle, 0xffc070, 12, 0.07);
       const up = [0, 1, 0];
       const right = norm(cross(f, up));
       const u2 = cross(right, f);
@@ -267,7 +267,7 @@ export class Tools {
       const hit = g.destruction.pick(e, f, 2.4, g.player.collider);
       if (!hit) return;
       g.fx.sparksAt(hit.point, 3, hit.normal, 1.3);
-      g.renderer.flash(hit.point, 0x9fd8ff, 14, 0.06, 0.5);
+      g.renderer.flash(hit.point, 0x9fd8ff, 3, 0.06, 0.5);
       if (this.cutTimer > 0) return;
       this.cutTimer = 0.045;
       if (hit.kind === 'world' || hit.kind === 'body') {
@@ -386,7 +386,7 @@ export class Tools {
         pr.p = [pr.p[0] + pr.v[0] * dt, pr.p[1] + pr.v[1] * dt, pr.p[2] + pr.v[2] * dt];
         pr.mesh.position.set(...pr.p);
         pr.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(...d));
-        g.renderer.flash(pr.p, 0xffa040, 8, 0.03);
+        g.renderer.flash(pr.p, 0xffa040, 4, 0.03);
       }
     }
   }

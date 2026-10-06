@@ -1,0 +1,56 @@
+name: Mac app
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # attach the .dmg files to a GitHub Release on version tags
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1' # unit tests do not need Electron
+      - run: npm test
+
+  build-mac:
+    needs: test
+    runs-on: macos-14 # Apple Silicon
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build Breakpoint.app and .dmg (Apple Silicon + Intel)
+        run: npm run dist:mac
+      - name: Self-test the built Apple Silicon app
+        # CI Macs are VMs whose GPU support varies, so a failure here is
+        # reported but does not block the download.
+        continue-on-error: true
+        run: BREAKPOINT_APP="$PWD/dist/mac-arm64/Breakpoint.app/Contents/MacOS/Breakpoint" npm run selftest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Breakpoint-macOS
+          path: |
+            dist/*.dmg
+            smoke-out/app-selftest.png
+          if-no-files-found: warn
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg

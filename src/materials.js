@@ -9,9 +9,12 @@ export const B = {
   PAVING: 21, VANRED: 22, TIRE: 23, TRIM: 24, CRATE: 25, LINE: 26, STEEL: 27,
 };
 
+// Palette entries are authored as sRGB hex; vertex colours are linear.
+const lin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+
 const def = (name, hex, tier, o = {}) => ({
   name,
-  color: [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255],
+  color: [lin(((hex >> 16) & 255) / 255), lin(((hex >> 8) & 255) / 255), lin((hex & 255) / 255)],
   tier,
   flammable: !!o.flammable,
   transparent: !!o.transparent,

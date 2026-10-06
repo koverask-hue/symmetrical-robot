@@ -22,6 +22,16 @@ test('index and coords round-trip', () => {
   for (const [x, y, z] of [[0, 0, 0], [31, 31, 31], [5, 17, 9]]) assert.deepEqual(w.coords(w.index(x, y, z)), [x, y, z]);
 });
 
+test('material swaps do not produce physics edits, solid/air changes do', () => {
+  const w = flat();
+  w.set(3, 3, 3, B.PLANK);
+  assert.equal(w.edits.length, 1);
+  w.set(3, 3, 3, B.CHAR);
+  assert.equal(w.edits.length, 1);
+  w.set(3, 3, 3, B.AIR);
+  assert.equal(w.edits.length, 2);
+});
+
 test('set marks the owning chunk and neighbours dirty and records an edit', () => {
   const w = flat();
   w.dirty.clear();

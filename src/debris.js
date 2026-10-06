@@ -321,15 +321,29 @@ export class Debris {
         if (f > rec.best) Object.assign(rec, { best: f, h1, h2, other: o });
       }
     });
-    let budget = FRACTURE_PER_FRAME;
+    // Hardest hits first, so the per-frame budgets go to what matters.
+    const list = [];
     for (const [body, rec] of perBody) {
+      if (this.bodies.has(body.id)) list.push([body, rec, rec.force / (body.mass * FORCE_PER_KG_PER_MS)]);
+    }
+    list.sort((a, b) => b[2] - a[2]);
+    let budget = FRACTURE_PER_FRAME;
+    let sounds = 12;
+    for (const [body, rec, speed] of list) {
       if (!this.bodies.has(body.id)) continue;
-      const speed = rec.force / (body.mass * FORCE_PER_KG_PER_MS);
+      const mat = body.grid.find((v) => v) || B.CONCRETE;
+      const fracture = speed >= FRACTURE_SPEED && budget > 0 && this.time - body.lastFracture >= FRACTURE_COOLDOWN;
+      if (!fracture) {
+        // Sound and dust only need roughly where: the centre of mass will do.
+        if (sounds-- > 0) {
+          const c = body.rb.worldCom();
+          this.fx.impact?.([c.x, c.y, c.z], mat, speed, body.mass);
+        }
+        continue;
+      }
       const point = this.contactPoint(body, this.physics.ownerOf(rec.other));
       if (!point) continue;
-      const mat = body.grid.find((v) => v) || B.CONCRETE;
       this.fx.impact?.(point, mat, speed, body.mass);
-      if (speed < FRACTURE_SPEED || budget <= 0 || this.time - body.lastFracture < FRACTURE_COOLDOWN) continue;
       budget--;
       body.lastFracture = this.time;
       this.fractures++;
@@ -356,26 +370,31 @@ export class Debris {
   contactPoint(body, other) {
     const w = this.world;
     const ob = other && other.kind === 'body' && this.bodies.has(other.ref.id) ? other.ref : null;
-    const probe = (p) => {
+    // Poses are fetched once: each rb.translation()/rotation() is a WASM call.
+    const { t, q } = body.pose();
+    const op = ob ? ob.pose() : null;
+    const oiq = op ? conj(op.q) : null;
+    const probe = (x, y, z) => {
       if (ob) {
-        const l = ob.worldToLocal(p);
-        return ob.get(Math.floor(l[0]), Math.floor(l[1]), Math.floor(l[2])) !== B.AIR;
+        const l = rotate(oiq, [x - op.t.x, y - op.t.y, z - op.t.z]);
+        return ob.get(Math.floor(l[0] / VOXEL), Math.floor(l[1] / VOXEL), Math.floor(l[2] / VOXEL)) !== B.AIR;
       }
-      return w.get(Math.floor(p[0] / VOXEL), Math.floor(p[1] / VOXEL), Math.floor(p[2] / VOXEL)) !== B.AIR;
+      return w.get(Math.floor(x / VOXEL), Math.floor(y / VOXEL), Math.floor(z / VOXEL)) !== B.AIR;
     };
-    const { nx, ny, nz, grid } = body;
-    const stride = Math.max(1, Math.ceil(body.count / 1500));
+    const { nx, nz, grid } = body;
+    const stride = Math.max(1, Math.ceil(body.count / 800));
     const d = VOXEL * 0.75;
     let sx = 0, sy = 0, sz = 0, n = 0, k = 0;
     let low = null;
     for (let i = 0; i < grid.length; i++) {
       if (!grid[i] || k++ % stride) continue;
       const x = i % nx, r = (i - x) / nx, z = r % nz, y = (r - z) / nz;
-      const p = body.localToWorld([x + 0.5, y + 0.5, z + 0.5]);
-      if (!low || p[1] < low[1]) low = p;
-      if (probe([p[0], p[1] - d, p[2]]) || probe([p[0] + d, p[1], p[2]]) || probe([p[0] - d, p[1], p[2]]) ||
-          probe([p[0], p[1], p[2] + d]) || probe([p[0], p[1], p[2] - d]) || probe([p[0], p[1] + d, p[2]])) {
-        sx += p[0]; sy += p[1]; sz += p[2]; n++;
+      const v = rotate(q, [(x + 0.5) * VOXEL, (y + 0.5) * VOXEL, (z + 0.5) * VOXEL]);
+      const px = v[0] + t.x, py = v[1] + t.y, pz = v[2] + t.z;
+      if (!low || py < low[1]) low = [px, py, pz];
+      if (probe(px, py - d, pz) || probe(px + d, py, pz) || probe(px - d, py, pz) ||
+          probe(px, py, pz + d) || probe(px, py, pz - d) || probe(px, py + d, pz)) {
+        sx += px; sy += py; sz += pz; n++;
       }
     }
     return n ? [sx / n, sy / n, sz / n] : low;

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Breakpoint</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud" hidden>
+    <div id="markers"></div>
+    <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+    <div id="prompt"></div>
+    <div id="phase"></div>
+    <div id="objectives"></div>
+    <div id="alarm"><span class="label">ALARM</span><span id="alarm-time">60.0</span></div>
+    <div id="status">
+      <div id="health"><div id="health-fill"></div></div>
+      <span id="health-text">100</span>
+    </div>
+    <div id="toolbar"></div>
+    <div id="toasts"></div>
+    <div id="stats"></div>
+  </div>
+
+  <section id="screen-loading" class="screen show">
+    <div class="brand small">BREAKPOINT</div>
+    <div class="bar"><div id="load-fill"></div></div>
+    <div id="load-text">Starting</div>
+  </section>
+
+  <section id="screen-menu" class="screen">
+    <div class="panel">
+      <div class="brand">BREAKPOINT</div>
+      <p class="tag">Every wall is a door. Plan the route, then run it before the cops arrive.</p>
+      <button id="btn-play" class="primary">Play</button>
+      <div class="row">
+        <button id="btn-new">New town</button>
+        <span id="seed-label"></span>
+      </div>
+      <div class="settings">
+        <label>Graphics
+          <select id="opt-quality">
+            <option value="auto">Auto</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="ultra">Ultra (GTAO)</option>
+          </select>
+        </label>
+        <label>Mouse
+          <input id="opt-sens" type="range" min="0.6" max="3" step="0.05" value="1">
+        </label>
+      </div>
+      <div class="controls">
+        <div><kbd>WASD</kbd> move · <kbd>Shift</kbd> sprint · <kbd>Space</kbd> jump · <kbd>C</kbd> crouch</div>
+        <div><kbd>Click</kbd> use tool · <kbd>Right-click</kbd> / <kbd>Q</kbd> carry, click to throw</div>
+        <div><kbd>1</kbd>–<kbd>6</kbd> / wheel tools · <kbd>E</kbd> grab loot · <kbd>Esc</kbd> pause</div>
+      </div>
+      <p id="best"></p>
+    </div>
+  </section>
+
+  <section id="screen-pause" class="screen">
+    <div class="panel">
+      <div class="brand small">PAUSED</div>
+      <button id="btn-resume" class="primary">Resume</button>
+      <button id="btn-restart">Restart mission</button>
+      <button id="btn-menu">Main menu</button>
+    </div>
+  </section>
+
+  <section id="screen-results" class="screen">
+    <div class="panel">
+      <div id="res-title" class="brand"></div>
+      <p id="res-reason" class="tag"></p>
+      <dl id="res-stats"></dl>
+      <button id="btn-retry" class="primary">Retry</button>
+      <button id="btn-res-new">New town</button>
+      <button id="btn-res-menu">Main menu</button>
+    </div>
+  </section>
+
+  <section id="screen-error" class="screen">
+    <div class="panel">
+      <div class="brand small">Can't start</div>
+      <p id="err-text" class="tag"></p>
+    </div>
+  </section>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

@@ -52,16 +52,19 @@ export class World {
   set(x, y, z, v) {
     if (!this.inBounds(x, y, z)) return false;
     const i = this.index(x, y, z);
-    if (this.data[i] === v) return false;
+    const old = this.data[i];
+    if (old === v) return false;
     this.data[i] = v;
     this.touch(x, y, z);
+    // Physics only cares about solid <-> air; a material swap (e.g. wood
+    // charring) must not force a collider rebuild.
+    if ((old === B.AIR) !== (v === B.AIR)) this.edits.push(i);
     return true;
   }
 
   // A voxel change can alter faces and ambient occlusion one voxel away, so
   // dirty every chunk overlapping the 3x3x3 neighbourhood.
   touch(x, y, z) {
-    this.edits.push(x + this.sx * (z + this.sz * y));
     const x0 = Math.max(0, (x - 1) >> 4), x1 = Math.min(this.cx - 1, (x + 1) >> 4);
     const y0 = Math.max(0, (y - 1) >> 4), y1 = Math.min(this.cy - 1, (y + 1) >> 4);
     const z0 = Math.max(0, (z - 1) >> 4), z1 = Math.min(this.cz - 1, (z + 1) >> 4);
@@ -155,6 +158,7 @@ export class World {
           if (d > r * 0.75 && rand() > (r - d) / (r * 0.25)) continue;
           this.data[i] = B.AIR;
           this.touch(x, y, z);
+          this.edits.push(i);
           removed.push({ x, y, z, id });
         }
       }
@@ -172,6 +176,7 @@ export class World {
       if (id === B.AIR || BLOCKS[id].tier >= 3) continue;
       this.data[i] = B.AIR;
       this.touch(v.x, v.y, v.z);
+      this.edits.push(i);
       removed.push({ x: v.x, y: v.y, z: v.z, id });
     }
     return { removed, seeds: this.neighbourSeeds(removed) };

@@ -105,7 +105,7 @@ export class Destruction {
    */
   explode(center, power = 1) {
     const radii = [1.9 * power, 1.35 * power, 0.55 * power];
-    this.carve(center, radii, { heat: this.time, ignite: 0.35, chips: 0.5, chipVel: 9 * power });
+    this.carve(center, radii, { heat: this.time, ignite: 0.06, chips: 0.5, chipVel: 9 * power });
     this.debris.impulse(center, 5.5 * power, 14 * power);
     this.physics.wakeInBox(center[0] - 6, center[1] - 6, center[2] - 6, center[0] + 6, center[1] + 6, center[2] + 6);
     this.fx.explosion?.(center, power);

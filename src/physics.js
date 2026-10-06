@@ -26,7 +26,6 @@ export class Physics {
     this.pw.timestep = STEP;
     this.pw.integrationParameters.numSolverIterations = 6;
     this.events = new RAPIER.EventQueue(true);
-    this.ground = this.pw.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     this.chunkColliders = new Map(); // chunkKey -> collider
     this.owners = new Map(); // collider handle -> { kind, ref }
     this.acc = 0;
@@ -71,10 +70,14 @@ export class Physics {
         for (let x = 0; x < CHUNK; x++)
           if (w.get(cx * CHUNK + x, cy * CHUNK + y, cz * CHUNK + z) !== B.AIR) coords.push(x, y, z);
     if (!coords.length) return null;
-    const desc = RAPIER.ColliderDesc.voxels(new Int32Array(coords), this.vs)
-      .setTranslation(cx * CHUNK * VOXEL, cy * CHUNK * VOXEL, cz * CHUNK * VOXEL)
-      .setFriction(0.8);
-    const c = this.pw.createCollider(desc, this.ground);
+    // One fixed body per chunk. Editing a collider makes Rapier recompute its
+    // parent body's mass properties over every attached collider; with one
+    // shared ground body that meant all ~400k voxels (~30 ms) per edit.
+    const body = this.pw.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed().setTranslation(cx * CHUNK * VOXEL, cy * CHUNK * VOXEL, cz * CHUNK * VOXEL),
+    );
+    const desc = RAPIER.ColliderDesc.voxels(new Int32Array(coords), this.vs).setFriction(0.8);
+    const c = this.pw.createCollider(desc, body);
     const key = w.chunkKey(cx, cy, cz);
     this.chunkColliders.set(key, c);
     this.owners.set(c.handle, { kind: 'world', ref: key });
@@ -139,11 +142,18 @@ export class Physics {
   wakeInBox(ax, ay, az, bx, by, bz, pad = 0) {
     const c = { x: (ax + bx) / 2, y: (ay + by) / 2, z: (az + bz) / 2 };
     const h = { x: (bx - ax) / 2 + pad, y: (by - ay) / 2 + pad, z: (bz - az) / 2 + pad };
+    // Never mutate inside a Rapier query callback: the query holds the body
+    // set borrowed, and wasm-bindgen swallows the aliasing error while leaving
+    // the borrow stuck (the world then cannot be freed). Collect, then wake.
+    const found = [];
     this.pw.collidersWithAabbIntersectingAabb(c, h, (col) => {
-      const body = col.parent();
-      if (body && body.isDynamic() && body.isSleeping()) body.wakeUp();
+      found.push(col);
       return true;
     });
+    for (const col of found) {
+      const body = col.parent();
+      if (body && body.isDynamic() && body.isSleeping()) body.wakeUp();
+    }
   }
 
   register(collider, kind, ref) {

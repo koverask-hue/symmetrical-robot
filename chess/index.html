@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wizard's Chess</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Wizard's Chess in a Gothic cathedral: marble against obsidian, with Stockfish from 100 to 3500 Elo.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@500;700&family=Roboto+Flex:opsz,wght@8..144,300..700&family=Roboto+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..24,400,0..1,0&display=block">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="app">
+  <header class="app-bar">
+    <h1 class="wordmark">Wizard's Chess</h1>
+    <div class="app-bar__actions">
+      <button class="icon-btn" id="btn-sound" type="button" aria-label="Mute sound" title="Mute sound"><span class="msr" aria-hidden="true">volume_up</span></button>
+      <button class="icon-btn" id="btn-rotate" type="button" aria-label="Rotate view" title="Rotate view"><span class="msr" aria-hidden="true">3d_rotation</span></button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="3D chess board. Click a piece, then a highlighted square, to move."></canvas>
+    <div class="turn-pill" id="turn-pill" aria-live="polite">
+      <span class="swatch" id="turn-swatch"></span><span id="turn-text">Marble to move</span>
+    </div>
+    <div class="loading" id="loading">
+      <div class="progress progress--indeterminate" aria-hidden="true"><span></span></div>
+      <p>Lighting the candles…</p>
+    </div>
+  </main>
+
+  <aside class="sheet" aria-label="Game controls">
+    <section class="card status" aria-live="polite">
+      <div class="status__row">
+        <p class="status__title" id="status-title">Your move</p>
+        <span class="chip chip--quiet" id="engine-chip">Loading Stockfish…</span>
+      </div>
+      <p class="status__body" id="status-body">Click a marble piece, then a glowing square.</p>
+      <div class="progress progress--indeterminate" id="thinking" hidden><span></span></div>
+    </section>
+
+    <section class="group" aria-labelledby="elo-label">
+      <div class="group__head">
+        <h2 class="label" id="elo-label">Opponent strength</h2>
+      </div>
+      <div class="elo">
+        <output class="elo__value" id="elo-value" for="elo">1500</output>
+        <span class="elo__tier" id="elo-tier">Club player</span>
+      </div>
+      <input class="slider" id="elo" type="range" min="100" max="3500" step="10" value="1500" aria-describedby="elo-desc">
+      <div class="chips" id="elo-presets" role="group" aria-label="Strength presets"></div>
+      <p class="caption" id="elo-desc">Stockfish 18 limited to 1500 Elo</p>
+    </section>
+
+    <section class="group" aria-labelledby="side-label">
+      <h2 class="label" id="side-label">Play as</h2>
+      <div class="segmented" role="radiogroup" aria-labelledby="side-label" id="side">
+        <button type="button" role="radio" data-side="w" aria-checked="true"><span class="msr check" aria-hidden="true">check</span>Marble</button>
+        <button type="button" role="radio" data-side="b" aria-checked="false"><span class="msr check" aria-hidden="true">check</span>Obsidian</button>
+        <button type="button" role="radio" data-side="two" aria-checked="false"><span class="msr check" aria-hidden="true">check</span>Two players</button>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button class="btn btn--filled" id="btn-new" type="button"><span class="msr" aria-hidden="true">restart_alt</span>New game</button>
+      <button class="btn btn--tonal" id="btn-undo" type="button"><span class="msr" aria-hidden="true">undo</span>Undo</button>
+      <button class="btn btn--outlined" id="btn-hint" type="button"><span class="msr" aria-hidden="true">lightbulb</span>Hint</button>
+    </section>
+
+    <form class="cast" id="cast" autocomplete="off">
+      <label class="label" for="cast-input">Cast a move</label>
+      <div class="field">
+        <span class="msr" aria-hidden="true">auto_awesome</span>
+        <input id="cast-input" type="text" placeholder="e4, Nf3, knight to f3" spellcheck="false">
+        <button class="icon-btn" type="submit" aria-label="Cast move"><span class="msr" aria-hidden="true">send</span></button>
+      </div>
+    </form>
+
+    <section class="group moves-group" aria-labelledby="moves-label">
+      <div class="group__head">
+        <h2 class="label" id="moves-label">Moves</h2>
+        <div class="captured" aria-label="Captured pieces">
+          <span id="captured-w" title="Taken by Marble"></span>
+          <span id="captured-b" title="Taken by Obsidian"></span>
+        </div>
+      </div>
+      <ol class="moves" id="moves"></ol>
+      <p class="caption empty" id="moves-empty">No moves yet. Marble opens.</p>
+    </section>
+  </aside>
+</div>
+
+<dialog class="dialog" id="promo-dialog" aria-labelledby="promo-title">
+  <h2 class="dialog__title" id="promo-title">Promote pawn</h2>
+  <p class="dialog__body">Choose what your pawn becomes.</p>
+  <div class="promo" id="promo-choices">
+    <button type="button" data-piece="q"><span class="glyph"></span>Queen</button>
+    <button type="button" data-piece="r"><span class="glyph"></span>Rook</button>
+    <button type="button" data-piece="b"><span class="glyph"></span>Bishop</button>
+    <button type="button" data-piece="n"><span class="glyph"></span>Knight</button>
+  </div>
+</dialog>
+
+<dialog class="dialog" id="result-dialog" aria-labelledby="result-title">
+  <h2 class="dialog__title" id="result-title">Checkmate</h2>
+  <p class="dialog__body" id="result-body">Obsidian wins.</p>
+  <div class="dialog__actions">
+    <button class="btn btn--text" type="button" id="result-close">View board</button>
+    <button class="btn btn--filled" type="button" id="result-new">New game</button>
+  </div>
+</dialog>
+
+<div class="snackbar" id="snackbar" role="status" hidden></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

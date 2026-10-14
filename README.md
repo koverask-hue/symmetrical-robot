@@ -80,3 +80,31 @@ Graphics presets live in the main menu. Auto picks **High** on Apple GPUs; **Ult
 - It is not Teardown. There is no ray-traced lighting, no water, no vehicles and only one handcrafted mission layout, though the town can be reseeded.
 - Graphics and performance were verified in a software renderer on Linux, not on a real Mac GPU. The shaders and settings are standard WebGL 2 that Metal handles well, but if anything looks or runs wrong on your Mac, the HUD's fps/CPU line is the first thing to report.
 - Debris bodies are capped (about 180 at once); beyond that, the oldest resting pieces are frozen back into the world.
+
+---
+
+# Wizard's Chess
+
+A full 32-piece game of chess in a Gothic cathedral, in `chess/`. Marble plays obsidian; every piece idles, moves, attacks and shatters with its own animation, and the opponent is Stockfish 18 running in your browser.
+
+```sh
+npm start          # then open http://localhost:5173/chess/
+```
+
+No build step and no network access are needed at runtime: three.js, chess.js and Stockfish are vendored in `chess/vendor/` (fonts come from Google Fonts and fall back to system faces offline).
+
+**Playing.** Click a piece, then one of the glowing squares. Drag to orbit, scroll or pinch to zoom. You can also type a move into **Cast a move** (`e4`, `Nxf3`, `knight to f3`, `castle kingside`). Everything is on one screen: strength, side (Marble, Obsidian or two players on one board), new game, undo, hint and the move list.
+
+**Opponent strength (100 to 3500 Elo).** What each part of the slider actually does:
+
+| Setting | What the engine does |
+| --- | --- |
+| 1320 to 3190 | Stockfish's own calibrated limiter (`UCI_LimitStrength` + `UCI_Elo`) |
+| Below 1320 | Stockfish at its 1320 floor, mixed with random legal moves (up to 85% at 100) |
+| Above 3190 | Stockfish unrestricted, thinking 0.8 s at 3200 rising to 6 s per move at 3500 |
+
+Above 3190 the number is a label for "more thinking time", not a measured rating: the browser build is the single-threaded "lite" network, so its true ceiling is somewhere around 3000 to 3300 depending on the device. If WebAssembly is unavailable, a small built-in engine takes over and tops out near 1600; the panel says so.
+
+**Animations.** Pieces hover and breathe, kings survey the board, knights nod and toss their heads, and idle pieces occasionally hop or glance around. Moves anticipate, arc and land with dust. Knights leap; rooks back up and ram; kings and pawns wind up and strike; bishops and queens cast a spell bolt. The captured piece braces, then is fractured from its own geometry into shards that bounce across the board. Checkmate shatters the losing king.
+
+**Licences.** Stockfish is GPLv3 (`chess/vendor/stockfish/COPYING.txt`) and runs as a separate program in a Web Worker; chess.js is BSD-2-Clause; three.js is MIT.

@@ -2,6 +2,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { createPiece, PIECE_HEIGHT } from './pieces.js';
 import { squareToXZ } from './scene.js';
+import { Finishers, killInfo } from './finishers.js';
 
 const ease = {
   linear: (t) => t,
@@ -29,6 +30,40 @@ export class Animator {
     this.nextFidget = 3;
     this.speed = matchMedia('(prefers-reduced-motion: reduce)').matches ? 2.2 : 1;
     this.calm = this.speed > 1;
+    this.finishers = new Finishers(this);
+    this.style = 'insane'; // kill style: classic | brutal | insane
+    this.forceKill = null; // pin a specific finisher (testing and the curious)
+    this.ui = null; // { callout(text), flash(color, strength) } supplied by the page
+    this.timeFx = [];
+    this.cinematics = 0;
+    this.skipping = false;
+  }
+
+  // ---- time control ------------------------------------------------------
+
+  slowmo(scale, seconds) {
+    this.timeFx.push({ scale, left: seconds });
+  }
+
+  // Called with real frame time; returns how fast game time should run this frame.
+  timeScale(realDt) {
+    for (let i = this.timeFx.length - 1; i >= 0; i--) {
+      this.timeFx[i].left -= realDt;
+      if (this.timeFx[i].left <= 0) this.timeFx.splice(i, 1);
+    }
+    if (this.cinematics === 0) this.skipping = false;
+    if (this.skipping) return 4;
+    let s = 1;
+    for (const f of this.timeFx) s = Math.min(s, f.scale);
+    return s;
+  }
+
+  // Click during a kill to fast-forward it.
+  skip() {
+    if (this.cinematics > 0) {
+      this.skipping = true;
+      this.timeFx.length = 0;
+    }
   }
 
   // ---- tween primitives -------------------------------------------------
@@ -153,6 +188,27 @@ export class Animator {
     view.pose.scale.set(1, 1, 1);
   }
 
+  lean(view, dir, angle) {
+    this.#lean(view, dir, angle);
+  }
+
+  // Knocked by a shockwave or a flying piece: rock away and settle.
+  wobble(view, dir, strength = 1) {
+    if (!view || view.busy) return;
+    const token = ++view.token;
+    const s = Math.min(1.2, strength);
+    this.tween(0.8, (t) => {
+      if (view.token !== token || view.busy) return;
+      this.#lean(view, dir, 0.45 * s * Math.sin(t * Math.PI * 3) * (1 - t));
+      view.pose.position.y = t < 0.4 ? 0.3 * s * Math.sin(Math.PI * t * 2.5) : 0;
+    }).then(() => {
+      if (view.token === token && !view.busy) {
+        view.pose.rotation.set(0, 0, 0);
+        view.pose.position.set(0, 0, 0);
+      }
+    });
+  }
+
   #lean(view, dir, angle) {
     view.pose.rotation.x = dir.z * angle;
     view.pose.rotation.z = -dir.x * angle;
@@ -261,17 +317,6 @@ export class Animator {
     });
   }
 
-  #hitFlash(view, color) {
-    view.material.emissive.set(color).multiplyScalar(1.6);
-  }
-
-  #shatter(victim, dir) {
-    this.#remove(victim);
-    this.fx.shatter(victim, dir);
-    this.sound.play('shatter');
-    this.stage.rig.shake = 1;
-  }
-
   async capture(fromSq, toSq, victimSq) {
     const attacker = this.views.get(fromSq);
     const victim = this.views.get(victimSq);
@@ -280,31 +325,46 @@ export class Animator {
     this.#claim(attacker);
     this.views.delete(victimSq);
     this.#reassign(attacker, toSq);
+    this.cinematics++;
+    try {
+      await this.#capture(attacker, victim, toSq, victimSq);
+    } finally {
+      this.cinematics--;
+    }
+  }
+
+  async #capture(attacker, victim, toSq, victimSq) {
     const start = attacker.root.position.clone();
     const vpos = squareToXZ(victimSq);
     const dir = vpos.clone().sub(start).setY(0).normalize();
     const color = attacker.color;
+    const killId = this.finishers.pick(attacker, victim, { style: this.style, force: this.forceKill });
+    const kill = killInfo(killId);
     const ranged = attacker.type === 'b' || attacker.type === 'q';
     const braced = this.#brace(victim, dir, 1.2);
+    const ctx = { victim, attacker, dir, style: this.style };
 
-    if (ranged) {
-      // Spellcasters stay put, gather light, and fire a bolt.
+    if (ranged || kill.kind === 'magic') {
+      // Gather power: rise, spin and glow.
       await this.tween(0.42, (t) => {
         attacker.pose.position.y = 0.25 * ease.out(t);
         this.#lean(attacker, dir, -0.22 * t);
-        attacker.material.emissive.copy(GLOW[color]).multiplyScalar(1.2 * t);
+        attacker.material.emissive.copy(GLOW[color]).multiplyScalar(0.7 * t);
         attacker.pose.rotation.y = t * Math.PI * 2;
       }, ease.inOut);
-      this.sound.play('zap');
       const tip = start.clone().setY(PIECE_HEIGHT[attacker.type] + 0.3);
-      const boltDone = this.fx.bolt(tip, vpos.clone().setY(0.45), BOLT[color]);
-      this.tween(0.12, (t) => this.#lean(attacker, dir, -0.22 + 0.5 * t));
-      await boltDone;
-      this.#hitFlash(victim, 0xffffff);
-      await this.wait(0.06);
-      this.#shatter(victim, dir);
+      this.sound.play('zap');
+      if (kill.kind === 'physical') {
+        // Telekinesis: a bolt carries the blow.
+        const boltDone = this.fx.bolt(tip, vpos.clone().setY(0.45), BOLT[color]);
+        this.tween(0.12, (t) => this.#lean(attacker, dir, -0.22 + 0.5 * t));
+        await boltDone;
+      } else {
+        this.fx.burst(tip, { count: 40, color: BOLT[color], speed: 2, size: 0.08, life: 0.5, gravity: 0, additive: true });
+      }
+      await this.finishers.run(killId, ctx);
       await this.tween(0.3, (t) => {
-        attacker.material.emissive.copy(GLOW[color]).multiplyScalar(1.2 * (1 - t));
+        attacker.material.emissive.copy(GLOW[color]).multiplyScalar(0.7 * (1 - t));
         attacker.pose.position.y = 0.25 * (1 - t);
         this.#lean(attacker, dir, 0.28 * (1 - t));
       }, ease.out);
@@ -355,11 +415,9 @@ export class Animator {
         attacker.root.position.copy(base).addScaledVector(dir, 0.3 * t);
       }, ease.in);
     }
-    this.#hitFlash(victim, 0xffffff);
     this.fx.pulse(vpos, 0xffffff, 25);
-    await this.wait(0.05);
-    this.#shatter(victim, dir);
-    // Recoil and recover.
+    const killed = this.finishers.run(killId, ctx);
+    // Recoil and recover while the finisher plays.
     const struck = attacker.root.position.clone();
     await this.tween(0.22, (t) => {
       this.#lean(attacker, dir, 0.55 * (1 - ease.out(t)));
@@ -368,6 +426,7 @@ export class Animator {
     });
     attacker.pose.rotation.set(0, 0, 0);
     attacker.pose.position.set(0, 0, 0);
+    await killed;
     await this.wait(0.12);
     await this.#travel(attacker, squareToXZ(toSq), { jump: false });
     attacker.busy = false;
@@ -401,21 +460,34 @@ export class Animator {
     v.busy = false;
   }
 
-  // Checkmate: the fallen king cracks apart.
-  async topple(square) {
+  // Checkmate: the fallen king gets the grandest finisher on offer.
+  async execute(square) {
     const king = this.views.get(square);
     if (!king) return;
     this.#claim(king);
-    await this.tween(0.7, (t) => {
-      king.pose.position.x = Math.sin(this.time * 60) * 0.02 * t;
-      king.pose.rotation.z = 0.25 * ease.in(t);
-      king.material.emissive.set(0xff3020).multiplyScalar(0.8 * t);
-    });
-    this.#remove(king);
-    this.fx.shatter(king, new THREE.Vector3(0, 0, 0), { pieces: 30, force: 0.4 });
-    this.sound.play('shatter');
-    this.sound.play('toll', 1);
-    this.stage.rig.shake = 1.2;
+    this.views.delete(square);
+    this.cinematics++;
+    try {
+      await this.tween(0.6, (t) => {
+        king.pose.position.x = Math.sin(this.time * 60) * 0.02 * t;
+        king.pose.rotation.z = 0.2 * ease.in(t);
+        king.material.emissive.set(0xff3020).multiplyScalar(0.8 * t);
+      });
+      this.sound.play('toll', 1);
+      if (this.style === 'classic') {
+        this.stage.scene.remove(king.root);
+        this.fx.shatter(king, new THREE.Vector3(0, 0, 0), { pieces: 30, force: 0.4 });
+        king.material.dispose();
+        this.sound.play('shatter');
+        this.stage.rig.shake = 1.2;
+        return;
+      }
+      const id = this.finishers.pick(null, king, { style: this.style, finale: true, force: this.forceKill });
+      await this.finishers.run(id, { victim: king, attacker: null, dir: null, style: this.style });
+      await this.wait(0.8);
+    } finally {
+      this.cinematics--;
+    }
   }
 
   // ---- per-frame ---------------------------------------------------------

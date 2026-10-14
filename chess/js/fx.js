@@ -15,11 +15,104 @@ export class Effects {
     this.flash = new THREE.PointLight(0xffffff, 0, 6, 2);
     scene.add(this.flash);
     this.flashLevel = 0;
+    this.tasks = [];
+    this.bodies = [];
+  }
+
+  // Runs fn(dt, age) every frame until it returns false.
+  every(fn) {
+    const task = { fn, age: 0 };
+    this.tasks.push(task);
+    return task;
+  }
+
+  // Expanding shockwave ring lying on the board (or any height).
+  ring(at, color, { radius = 3, duration = 0.7, width = 0.25, y = 0.02 } = {}) {
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(new THREE.RingGeometry(1 - width, 1, 64).rotateX(-Math.PI / 2), mat);
+    mesh.position.set(at.x, y, at.z);
+    mesh.scale.setScalar(0.01);
+    this.scene.add(mesh);
+    this.every((dt, age) => {
+      const t = age / duration;
+      mesh.scale.setScalar(0.01 + radius * (1 - Math.pow(1 - Math.min(t, 1), 3)));
+      mat.opacity = Math.max(0, 1 - t);
+      if (t >= 1) {
+        this.scene.remove(mesh);
+        mesh.geometry.dispose();
+        mat.dispose();
+        return false;
+      }
+    });
+  }
+
+  // A burnt patch on the board that fades away.
+  scorch(at, { radius = 1.2, duration = 8, color = 0x050302 } = {}) {
+    const mat = new THREE.MeshBasicMaterial({ color, map: this.dot, transparent: true, opacity: 0.9, depthWrite: false });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2, radius * 2).rotateX(-Math.PI / 2), mat);
+    mesh.position.set(at.x, 0.012, at.z);
+    this.scene.add(mesh);
+    this.every((dt, age) => {
+      mat.opacity = 0.9 * Math.max(0, 1 - Math.max(0, age - duration * 0.6) / (duration * 0.4));
+      if (age >= duration) {
+        this.scene.remove(mesh);
+        mesh.geometry.dispose();
+        mat.dispose();
+        return false;
+      }
+    });
+  }
+
+  // Free rigid body: integrates position and spin, bounces off the floor, calls back on bounces and each step.
+  body(obj, { v, w = new THREE.Vector3(), gravity = GRAVITY, collide = true, restitution = 0.45, friction = 0.75,
+    radius = 0.3, life = 4, onBounce, onStep, onDone } = {}) {
+    const b = { obj, v: v.clone(), w: w.clone(), gravity, collide, restitution, friction, radius, life, onBounce, onStep, onDone, age: 0, dead: false };
+    this.bodies.push(b);
+    return b;
+  }
+
+  // Falling blocks of stone (or any material) from a point.
+  rubble(at, { count = 14, color = 0x55565f, size = 0.35, speed = 3, spread = 1, life = 4 } = {}) {
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.95 });
+    for (let i = 0; i < count; i++) {
+      const s = size * (0.4 + Math.random() * 0.8);
+      const geo = new THREE.BoxGeometry(s, s * (0.5 + Math.random()), s * (0.6 + Math.random() * 0.6));
+      geo.computeBoundingSphere();
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      mesh.position.copy(at).add(new THREE.Vector3((Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread));
+      this.scene.add(mesh);
+      this.shards.push({
+        mesh, v: new THREE.Vector3().randomDirection().multiplyScalar(speed * Math.random()), w: new THREE.Vector3().randomDirection().multiplyScalar(6),
+        r: geo.boundingSphere.radius, age: 0, life: life + Math.random(), resting: false,
+      });
+    }
+  }
+
+  // Coloured panes of stained glass bursting out of a window and raining down.
+  glass(center, { width = 2, height = 6, normal = new THREE.Vector3(0, 0, 1), colors = [0x2a56c4, 0x1d3f9e, 0x9e1b2c, 0xb8862b], count = 70 } = {}) {
+    const side = new THREE.Vector3(0, 1, 0).cross(normal).normalize();
+    const mats = colors.map((c) => new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(2.2), side: THREE.DoubleSide }));
+    for (let i = 0; i < count; i++) {
+      const s = 0.12 + Math.random() * 0.28;
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0), new THREE.Vector3(s, Math.random() * s * 0.5, 0), new THREE.Vector3(Math.random() * s, s, 0),
+      ]);
+      geo.computeVertexNormals();
+      geo.computeBoundingSphere();
+      const mesh = new THREE.Mesh(geo, mats[i % mats.length]);
+      mesh.position.copy(center).addScaledVector(side, (Math.random() - 0.5) * width).add(new THREE.Vector3(0, (Math.random() - 0.5) * height, 0));
+      this.scene.add(mesh);
+      this.shards.push({
+        mesh, v: normal.clone().multiplyScalar(1 + Math.random() * 4).addScaledVector(side, (Math.random() - 0.5) * 4).add(new THREE.Vector3(0, Math.random() * 3, 0)),
+        w: new THREE.Vector3().randomDirection().multiplyScalar(12), r: 0.05, age: 0, life: 3 + Math.random() * 2, resting: false,
+      });
+    }
   }
 
   // Splits every triangle of the piece into Voronoi-like chunks and throws them outward.
   shatter(piece, impactDir = new THREE.Vector3(), { pieces = 22, force = 1 } = {}) {
-    piece.root.updateMatrixWorld(true);
+    piece.root.updateWorldMatrix(true, true);
     const tris = [];
     const bbox = new THREE.Box3();
     piece.body.traverse((m) => {
@@ -163,6 +256,39 @@ export class Effects {
     this.flashLevel *= Math.exp(-dt * 7);
     this.flash.intensity = this.flashLevel;
 
+    for (let i = this.tasks.length - 1; i >= 0; i--) {
+      const task = this.tasks[i];
+      task.age += dt;
+      if (task.fn(dt, task.age) === false) this.tasks.splice(i, 1);
+    }
+
+    const axis = new THREE.Vector3();
+    for (let i = this.bodies.length - 1; i >= 0; i--) {
+      const b = this.bodies[i];
+      b.age += dt;
+      b.v.y += b.gravity * dt;
+      b.obj.position.addScaledVector(b.v, dt);
+      const spin = b.w.length();
+      if (spin > 1e-4) b.obj.rotateOnWorldAxis(axis.copy(b.w).divideScalar(spin), spin * dt);
+      if (b.collide) {
+        const floor = floorAt(b.obj.position.x, b.obj.position.z) + b.radius;
+        if (b.obj.position.y < floor && b.v.y < 0) {
+          b.obj.position.y = floor;
+          const impact = -b.v.y;
+          b.v.y = impact > 1 ? impact * b.restitution : 0;
+          b.v.x *= b.friction;
+          b.v.z *= b.friction;
+          b.w.multiplyScalar(0.7);
+          if (impact > 1) b.onBounce?.(b, impact);
+        }
+      }
+      if (b.onStep?.(b, dt) === false) b.dead = true;
+      if (b.dead || b.age > b.life) {
+        this.bodies.splice(i, 1);
+        b.onDone?.(b);
+      }
+    }
+
     for (let i = this.movers.length - 1; i >= 0; i--) {
       const m = this.movers[i];
       m.age += dt;
@@ -204,7 +330,7 @@ export class Effects {
       }
       if (s.age > s.life) {
         this.scene.remove(s.mesh);
-        s.mesh.geometry.dispose();
+        s.mesh.geometry?.dispose();
         this.shards.splice(i, 1);
       }
     }

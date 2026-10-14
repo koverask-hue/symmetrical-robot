@@ -88,10 +88,109 @@ export class Sound {
     this.#out(g, 1.2);
   }
 
+  // Pitched oscillator with an exponential glide and decay.
+  #tone(t, { type = 'sine', f0, f1 = f0, dur, gain, wet = 1, attack = 0.01 }) {
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    this.#out(g, wet);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+
+  // Filtered noise with a swept cutoff.
+  #hiss(t, { filter = 'bandpass', f0, f1 = f0, q = 1, dur, gain, wet = 1, attack = 0.005 }) {
+    const n = this.#noise(dur + 0.05);
+    const f = this.ctx.createBiquadFilter();
+    f.type = filter;
+    f.Q.value = q;
+    f.frequency.setValueAtTime(f0, t);
+    f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    n.connect(f).connect(g);
+    this.#out(g, wet);
+    n.start(t);
+  }
+
+  #grains(t, { count, spread, lo, hi, gain, q = 10 }) {
+    for (let i = 0; i < count; i++) {
+      const at = t + Math.random() * spread;
+      const f = lo + Math.random() * (hi - lo);
+      this.#hiss(at, { f0: f, f1: f * 0.9, q, dur: 0.04 + Math.random() * 0.05, gain: gain * (0.3 + Math.random() * 0.7), wet: 0.8 });
+    }
+  }
+
+  // Sounds for the kill finishers.
+  #finisher(name, t) {
+    switch (name) {
+      case 'thunder':
+        this.#hiss(t, { filter: 'highpass', f0: 3000, f1: 1500, dur: 0.18, gain: 0.8, wet: 0.6 });
+        this.#hiss(t + 0.03, { filter: 'lowpass', f0: 2500, f1: 120, dur: 2.2, gain: 0.9, wet: 1.4 });
+        this.#tone(t, { f0: 55, f1: 28, dur: 1.8, gain: 0.6, wet: 1.2 });
+        return true;
+      case 'whistle':
+        this.#tone(t, { type: 'triangle', f0: 380, f1: 2600, dur: 1.3, gain: 0.12, attack: 0.05 });
+        this.#hiss(t, { f0: 500, f1: 3000, q: 3, dur: 1.2, gain: 0.15 });
+        return true;
+      case 'incoming':
+        this.#tone(t, { type: 'triangle', f0: 2400, f1: 260, dur: 0.95, gain: 0.13, attack: 0.05 });
+        this.#hiss(t, { f0: 1200, f1: 180, q: 1.5, dur: 0.95, gain: 0.35, attack: 0.3 });
+        return true;
+      case 'ping':
+        this.#tone(t, { f0: 2093, dur: 1.6, gain: 0.14, wet: 1.5 });
+        this.#tone(t, { f0: 3136, dur: 1.2, gain: 0.05, wet: 1.5 });
+        return true;
+      case 'glass':
+        this.#hiss(t, { filter: 'highpass', f0: 4000, f1: 2500, dur: 0.5, gain: 0.5 });
+        this.#grains(t, { count: 30, spread: 1.4, lo: 3000, hi: 9000, gain: 0.3, q: 14 });
+        return true;
+      case 'rumble':
+        this.#tone(t, { f0: 48, f1: 24, dur: 2.2, gain: 0.8, wet: 1.2, attack: 0.05 });
+        this.#hiss(t, { filter: 'lowpass', f0: 500, f1: 70, dur: 1.8, gain: 0.7, wet: 1.2 });
+        return true;
+      case 'boom':
+        this.#tone(t, { f0: 80, f1: 22, dur: 1.4, gain: 1, wet: 1.3 });
+        this.#hiss(t, { filter: 'lowpass', f0: 1800, f1: 90, dur: 1, gain: 0.9, wet: 1.3 });
+        return true;
+      case 'void':
+        this.#tone(t, { type: 'sawtooth', f0: 120, f1: 35, dur: 1.8, gain: 0.08, attack: 0.3 });
+        this.#tone(t, { f0: 90, f1: 30, dur: 1.8, gain: 0.4, attack: 0.3 });
+        this.#hiss(t, { f0: 400, f1: 60, q: 2, dur: 1.8, gain: 0.3, attack: 0.4 });
+        return true;
+      case 'freeze':
+        this.#grains(t, { count: 22, spread: 0.6, lo: 2500, hi: 7000, gain: 0.25, q: 8 });
+        this.#tone(t, { f0: 1800, f1: 2700, dur: 0.6, gain: 0.05 });
+        return true;
+      case 'wind':
+        this.#hiss(t, { f0: 250, f1: 1400, q: 2.5, dur: 2.2, gain: 0.4, attack: 0.6 });
+        this.#hiss(t + 0.3, { f0: 600, f1: 2200, q: 4, dur: 1.8, gain: 0.2, attack: 0.5 });
+        return true;
+      case 'wail':
+        this.#tone(t, { f0: 620, f1: 300, dur: 2.2, gain: 0.09, attack: 0.3, wet: 1.6 });
+        this.#tone(t + 0.1, { f0: 930, f1: 455, dur: 2, gain: 0.04, attack: 0.3, wet: 1.6 });
+        return true;
+      case 'dissolve':
+        this.#hiss(t, { filter: 'highpass', f0: 7000, f1: 1500, dur: 1.5, gain: 0.25, attack: 0.2 });
+        this.#tone(t, { f0: 1200, f1: 2400, dur: 1.4, gain: 0.04, attack: 0.2 });
+        return true;
+    }
+    return false;
+  }
+
   play(name, strength = 1) {
     if (!this.ctx || !this.enabled) return;
     const ctx = this.ctx;
     const t = ctx.currentTime;
+    if (this.#finisher(name, t)) return;
     if (name === 'select') {
       const o = ctx.createOscillator();
       const g = ctx.createGain();

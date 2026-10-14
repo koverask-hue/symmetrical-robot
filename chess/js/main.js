@@ -5,6 +5,7 @@ import { Effects } from './fx.js';
 import { Animator } from './animator.js';
 import { Sound } from './audio.js';
 import { Engine } from './engine.js';
+import { KILL_STYLES } from './finishers.js';
 import { clampElo, engineSettings, describeSettings, tierName, PRESETS, ELO_MIN, ELO_MAX } from './elo.js';
 
 const $ = (id) => document.getElementById(id);
@@ -37,6 +38,7 @@ const state = {
   side: ['w', 'b', 'two'].includes(store.get('side', 'w')) ? store.get('side', 'w') : 'w',
   elo: clampElo(store.get('elo', 1500)),
   sound: store.get('sound', true) !== false,
+  kills: KILL_STYLES.some((k) => k.id === store.get('kills', 'insane')) ? store.get('kills', 'insane') : 'insane',
   selected: null,
   hover: null,
   busy: true, // pieces are animating
@@ -53,6 +55,23 @@ const fx = new Effects(stage.scene);
 const sound = new Sound();
 sound.setEnabled(state.sound);
 const anim = new Animator(stage, fx, sound);
+anim.style = state.kills;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+anim.ui = {
+  callout(text) {
+    const el = $('callout');
+    el.textContent = text;
+    el.classList.remove('is-on');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('is-on');
+  },
+  flash(color, strength = 0.5) {
+    if (reducedMotion) return;
+    const el = $('flash');
+    el.style.background = color;
+    el.animate([{ opacity: strength }, { opacity: 0 }], { duration: 480, easing: 'ease-out' });
+  },
+};
 const engine = new Engine();
 engine.addEventListener('ready', () => {
   if (engine.kind === 'fallback') snackbar('Stockfish could not start in this browser, so a lighter backup engine is playing.', 6000);
@@ -63,14 +82,22 @@ engine.addEventListener('ready', () => {
 
 let last = performance.now();
 let firstFrame = true;
+let showingSkip = false;
 function frame(now) {
   requestAnimationFrame(frame);
   // rAF timestamps can predate `last` after a long task, so never let dt go negative.
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
   last = Math.max(last, now);
-  anim.update(dt);
-  fx.update(dt);
+  const scaled = dt * anim.timeScale(dt); // slow motion and fast-forward during kills
+  anim.update(scaled);
+  fx.update(scaled);
   stage.render(now / 1000, dt);
+  const skippable = anim.cinematics > 0;
+  if (skippable !== showingSkip) {
+    showingSkip = skippable;
+    $('turn-pill').classList.toggle('is-skip', skippable);
+    updateTurnPill();
+  }
   if (firstFrame) {
     firstFrame = false;
     $('loading').classList.add('is-done');
@@ -171,7 +198,7 @@ async function afterMove() {
       const winner = loser === 'w' ? 'b' : 'w';
       state.busy = true;
       updateUI();
-      await anim.topple(kingSquare(loser));
+      await anim.execute(kingSquare(loser));
       state.busy = false;
       const body = vsEngine ? (winner === state.side ? 'You win. The cathedral bells ring for you.' : 'Stockfish wins this one.') : `${NAME[winner]} wins.`;
       endGame('Checkmate', `${NAME[winner]} defeats ${NAME[loser]}. ${body}`);
@@ -406,13 +433,17 @@ function renderPresets() {
   }));
 }
 
+function updateTurnPill() {
+  const turn = chess().turn();
+  $('turn-swatch').classList.toggle('is-black', turn === 'b');
+  $('turn-text').textContent = showingSkip ? 'Click to fast-forward' : state.over ? state.over.title : `${NAME[turn]} to move`;
+}
+
 function updateUI() {
   const c = chess();
   const turn = c.turn();
 
-  // Turn pill over the board
-  $('turn-swatch').classList.toggle('is-black', turn === 'b');
-  $('turn-text').textContent = state.over ? state.over.title : `${NAME[turn]} to move`;
+  updateTurnPill();
 
   // Status card
   let title;
@@ -456,8 +487,14 @@ function updateUI() {
   slider.setAttribute('aria-valuetext', `${state.elo} Elo, ${tierName(state.elo)}`);
   for (const b of $('elo-presets').children) b.setAttribute('aria-pressed', String(Number(b.dataset.elo) === state.elo));
 
-  // Side
+  // Side and kill style
   for (const b of $('side').querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.side === state.side));
+  for (const b of $('kills').querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.kill === state.kills));
+  $('kills-desc').textContent = {
+    classic: 'Every capture is a quick shatter. Best for fast games.',
+    brutal: 'Six shorter finishers with hit-stop. Keeps the game moving.',
+    insane: 'Twelve finishers with slow motion and camera moves. Queens and checkmates get the biggest ones.',
+  }[state.kills];
 
   // Buttons
   // Against the engine, undo needs one of your own moves to take back.
@@ -502,7 +539,10 @@ function updateUI() {
 // ---- wiring -------------------------------------------------------------
 
 const canvas = $('board');
-canvas.addEventListener('pointerdown', () => sound.unlock());
+canvas.addEventListener('pointerdown', () => {
+  sound.unlock();
+  anim.skip();
+});
 canvas.addEventListener('pointerup', (e) => {
   if (stage.rig.wasDrag) return;
   onSquare(stage.pickSquare(e.clientX, e.clientY, anim.meshes()));
@@ -552,6 +592,21 @@ $('side').addEventListener('keydown', (e) => {
   const i = (sides.indexOf(state.side) + (e.key === 'ArrowRight' ? 1 : 2)) % 3;
   setSide(sides[i]);
   $('side').querySelector(`[data-side="${sides[i]}"]`).focus();
+});
+$('kills').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-kill]');
+  if (!b) return;
+  state.kills = b.dataset.kill;
+  anim.style = state.kills;
+  store.set('kills', state.kills);
+  updateUI();
+});
+$('kills').addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const ids = KILL_STYLES.map((k) => k.id);
+  const i = (ids.indexOf(state.kills) + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length;
+  $('kills').querySelector(`[data-kill="${ids[i]}"]`).click();
+  $('kills').querySelector(`[data-kill="${ids[i]}"]`).focus();
 });
 $('elo').addEventListener('input', (e) => setElo(e.target.value));
 $('elo').addEventListener('change', () => store.set('elo', state.elo));

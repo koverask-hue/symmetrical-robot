@@ -105,6 +105,31 @@ No build step and no network access are needed at runtime: three.js, chess.js an
 
 Above 3190 the number is a label for "more thinking time", not a measured rating: the browser build is the single-threaded "lite" network, so its true ceiling is somewhere around 3000 to 3300 depending on the device. If WebAssembly is unavailable, a small built-in engine takes over and tops out near 1600; the panel says so.
 
-**Animations.** Pieces hover and breathe, kings survey the board, knights nod and toss their heads, and idle pieces occasionally hop or glance around. Moves anticipate, arc and land with dust. Knights leap; rooks back up and ram; kings and pawns wind up and strike; bishops and queens cast a spell bolt. The captured piece braces, then is fractured from its own geometry into shards that bounce across the board. Checkmate shatters the losing king.
+**Animations.** Pieces hover and breathe, kings survey the board, knights nod and toss their heads, and idle pieces occasionally hop or glance around. Moves anticipate, arc and land with dust. The captured piece braces, then gets a finisher.
+
+**Kills.** Pick a style in the panel; click the board during a kill to fast-forward it.
+
+| Style | What you get |
+| --- | --- |
+| Classic | Every capture is a quick shatter |
+| Brutal | Six shorter finishers with hit-stop |
+| Insane (default) | All twelve, with slow motion, camera moves and a callout. Taking a queen or delivering mate always draws one of the biggest |
+
+| Finisher | What happens |
+| --- | --- |
+| Shattered | Fractured from its own geometry into shards that bounce across the board |
+| Bowled over | Punted across the board, knocking into every piece in its path, off the dais and into the nave |
+| Sent to orbit | Launched through the vault; rubble rains down, moonlight pours through the hole and a star twinkles where it left |
+| Defenestrated | Thrown through a stained-glass window, which bursts into the nave and mends itself a few seconds later |
+| Banished | Stamped through a burning portal in the board |
+| Frozen solid | Encased in ice, then tapped into pieces |
+| Smitten | Struck by lightning from the vault, then crumbles to ash and leaves a scorch mark |
+| Erased | Dissolves from the top down and drifts away as dust |
+| Exorcised | Its ghost is torn out and flies up; the stone husk collapses |
+| Twisted | Pulled up into a whirlwind and blown apart at the top |
+| Spaghettified | A black hole opens above the square, stretches it thin and swallows it, then collapses in a shockwave |
+| Meteor'd | A meteor falls out of the sky onto the square; neighbours are knocked flying and the board is scorched |
+
+Finishers are matched to the attacker: bishops and queens favour spells, rooks and knights favour brute force, and the same finisher never plays twice in a row.
 
 **Licences.** Stockfish is GPLv3 (`chess/vendor/stockfish/COPYING.txt`) and runs as a separate program in a Web Worker; chess.js is BSD-2-Clause; three.js is MIT.

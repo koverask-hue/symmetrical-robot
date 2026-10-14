@@ -46,3 +46,22 @@ test('fallback engine returns a legal move and finds mate in one', () => {
   const mateFen = '6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1';
   assert.equal(chooseMove(mateFen, { depth: 2 }), 'a1a8');
 });
+
+test('finisher picks follow the kill style and never repeat back to back', async () => {
+  const { Finishers, killInfo } = await import('../chess/js/finishers.js');
+  const f = new Finishers({});
+  const pawn = { type: 'p' };
+  const knight = { type: 'n' };
+  assert.equal(f.pick(pawn, knight, { style: 'classic' }), 'shatter');
+  let last = null;
+  for (let i = 0; i < 200; i++) {
+    const style = i % 2 ? 'brutal' : 'insane';
+    const id = f.pick(i % 3 ? knight : pawn, pawn, { style });
+    assert.ok(killInfo(id), `unknown finisher ${id}`);
+    assert.notEqual(id, last);
+    last = id;
+  }
+  const queenKills = new Set(Array.from({ length: 50 }, () => f.pick(pawn, { type: 'q' }, { style: 'insane' })));
+  for (const id of queenKills) assert.ok(['meteor', 'blackhole', 'orbit', 'defenestrate', 'smite'].includes(id));
+  assert.equal(f.pick(pawn, pawn, { style: 'insane', force: 'meteor' }), 'meteor');
+});

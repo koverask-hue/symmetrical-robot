@@ -27,6 +27,8 @@
     <div class="turn-pill" id="turn-pill" aria-live="polite">
       <span class="swatch" id="turn-swatch"></span><span id="turn-text">Marble to move</span>
     </div>
+    <div class="flash" id="flash" aria-hidden="true"></div>
+    <div class="callout" id="callout" aria-live="polite"></div>
     <div class="loading" id="loading">
       <div class="progress progress--indeterminate" aria-hidden="true"><span></span></div>
       <p>Lighting the candles…</p>
@@ -63,6 +65,19 @@
         <button type="button" role="radio" data-side="b" aria-checked="false"><span class="msr check" aria-hidden="true">check</span>Obsidian</button>
         <button type="button" role="radio" data-side="two" aria-checked="false"><span class="msr check" aria-hidden="true">check</span>Two players</button>
       </div>
+    </section>
+
+    <section class="group" aria-labelledby="kills-label">
+      <div class="group__head">
+        <h2 class="label" id="kills-label">Kills</h2>
+        <span class="caption">Click the board to fast-forward</span>
+      </div>
+      <div class="segmented" role="radiogroup" aria-labelledby="kills-label" id="kills">
+        <button type="button" role="radio" data-kill="classic" aria-checked="false"><span class="msr check" aria-hidden="true">check</span>Classic</button>
+        <button type="button" role="radio" data-kill="brutal" aria-checked="false"><span class="msr check" aria-hidden="true">check</span>Brutal</button>
+        <button type="button" role="radio" data-kill="insane" aria-checked="true"><span class="msr check" aria-hidden="true">check</span>Insane</button>
+      </div>
+      <p class="caption" id="kills-desc">Twelve finishers with slow motion and camera moves. Queens and checkmates get the biggest ones.</p>
     </section>
 
     <section class="actions">

@@ -161,6 +161,36 @@ button, input { font: inherit; color: inherit; }
   box-shadow: inset 0 0 0 1px var(--md-outline);
 }
 .swatch.is-black { background: var(--obsidian); }
+.flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+.callout {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 18%;
+  text-align: center;
+  font: 700 clamp(40px, 7vw, 88px)/1 var(--font-display);
+  letter-spacing: 0.02em;
+  color: #f4d79e;
+  text-shadow: 0 2px 0 #3a2208, 0 0 24px rgba(255, 170, 60, 0.55), 0 0 60px rgba(120, 60, 255, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  text-wrap: balance;
+}
+.callout.is-on { animation: callout 1.9s var(--ease-emph) forwards; }
+@keyframes callout {
+  0% { opacity: 0; transform: scale(1.9) rotate(-3deg); filter: blur(6px); }
+  10% { opacity: 1; transform: scale(0.96) rotate(0deg); filter: blur(0); }
+  16% { transform: scale(1); }
+  78% { opacity: 1; transform: scale(1.03); }
+  100% { opacity: 0; transform: scale(1.08) translateY(-12px); }
+}
+.turn-pill.is-skip { color: var(--md-tertiary); }
 .loading {
   position: absolute;
   inset: 0;
@@ -478,6 +508,8 @@ button, input { font: inherit; color: inherit; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .callout.is-on { animation: callout-calm 1.6s linear forwards; }
+  @keyframes callout-calm { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
   .progress span { animation-duration: 3s; }
   * { transition-duration: 0ms !important; }
 }

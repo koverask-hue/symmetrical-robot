@@ -75,6 +75,7 @@ export class Stage {
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.localClippingEnabled = true; // used by dissolve and abyss finishers
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x07080c);
@@ -88,11 +89,13 @@ export class Stage {
     this.composer.addPass(new OutputPass());
 
     this.updaters = [];
+    this.windows = []; // stained glass that finishers can throw pieces through
     this.#environment();
     this.#lights();
     this.#cathedral();
     this.#board();
     this.#markers();
+    this.#measureWindows();
     this.rig = new OrbitRig(this.camera, canvas);
     this.resize();
     addEventListener('resize', () => this.resize());
@@ -282,6 +285,7 @@ export class Stage {
       win.position.set(0, roseY, end * (NAVE_LEN / 2 + 0.7));
       win.rotation.y = end < 0 ? 0 : Math.PI;
       group.add(win);
+      this.windows.push({ mesh: win, normal: new THREE.Vector3(0, 0, -end) });
       lancets.forEach(([x, halfW, spring], i) => {
         const w = halfW * 2 + 0.3;
         const h = spring - bottom + w * 0.9 + 0.3;
@@ -298,6 +302,20 @@ export class Stage {
     this.#shafts();
     this.#candles();
     this.#dust();
+  }
+
+  #measureWindows() {
+    this.scene.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    const size = new THREE.Vector3();
+    for (const w of this.windows) {
+      box.setFromObject(w.mesh);
+      w.center = box.getCenter(new THREE.Vector3());
+      box.getSize(size);
+      w.width = Math.max(size.x, size.z);
+      w.height = size.y;
+      w.broken = false;
+    }
   }
 
   #pier(x, z, h) {
@@ -336,6 +354,7 @@ export class Stage {
     }));
     m.position.set(x, y, z);
     m.rotation.y = side > 0 ? -Math.PI / 2 : side < 0 ? Math.PI / 2 : 0;
+    this.windows.push({ mesh: m, normal: new THREE.Vector3(side > 0 ? -1 : side < 0 ? 1 : 0, 0, side ? 0 : 1) });
     return m;
   }
 
@@ -594,6 +613,8 @@ class OrbitRig {
     this.polar = 1.05;
     this.radius = 15;
     this.goal = { azimuth: 0, polar: 1.05, radius: 15 };
+    this.home = this.target.clone();
+    this.cine = null; // temporary camera move requested by a finisher
     this.pointers = new Map();
     this.dragDistance = 0;
     this.shake = 0;
@@ -609,6 +630,7 @@ class OrbitRig {
       if (this.pointers.size === 1) {
         this.dragDistance += Math.abs(dx) + Math.abs(dy);
         if (this.dragDistance > 6) {
+          this.cine = null;
           this.goal.azimuth -= dx * 0.006;
           this.goal.polar = THREE.MathUtils.clamp(this.goal.polar - dy * 0.005, 0.25, 1.32);
         }
@@ -649,11 +671,25 @@ class OrbitRig {
     this.goal.azimuth += Math.PI;
   }
 
+  // Swing the camera to frame a moment, then drift back to where the player had it.
+  cinematic({ target, radius = this.goal.radius, polar = this.goal.polar, azimuth = null, hold = 2 }) {
+    let az = azimuth ?? this.goal.azimuth;
+    // Turn the short way round.
+    az += Math.round((this.azimuth - az) / (Math.PI * 2)) * Math.PI * 2;
+    this.cine = { target: target.clone(), radius, polar, azimuth: az, hold };
+  }
+
   update(dt) {
-    const k = 1 - Math.exp(-dt * 6);
-    this.azimuth += (this.goal.azimuth - this.azimuth) * k;
-    this.polar += (this.goal.polar - this.polar) * k;
-    this.radius += (this.goal.radius - this.radius) * k;
+    const c = this.cine;
+    if (c) {
+      c.hold -= dt;
+      if (c.hold <= 0) this.cine = null;
+    }
+    const k = 1 - Math.exp(-dt * (c ? 4 : 6));
+    this.target.lerp(c ? c.target : this.home, k);
+    this.azimuth += ((c ? c.azimuth : this.goal.azimuth) - this.azimuth) * k;
+    this.polar += ((c ? c.polar : this.goal.polar) - this.polar) * k;
+    this.radius += ((c ? c.radius : this.goal.radius) - this.radius) * k;
     const s = Math.sin(this.polar);
     this.camera.position.set(
       this.target.x + this.radius * s * Math.sin(this.azimuth),

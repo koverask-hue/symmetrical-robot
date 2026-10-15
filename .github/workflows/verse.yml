@@ -1,0 +1,77 @@
+name: Verse
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths: ['liner-plus/**', '.github/workflows/verse.yml']
+  pull_request:
+    paths: ['liner-plus/**', '.github/workflows/verse.yml']
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: liner-plus
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: liner-plus/package-lock.json
+      - name: Linux build deps
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: liner-plus/src-tauri
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Browser smoke test (mock source)
+        run: npx playwright install --with-deps chromium && npm run smoke
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            bundles: deb,appimage
+          - os: macos-14
+            bundles: dmg
+            args: --target universal-apple-darwin
+          - os: windows-latest
+            bundles: nsis
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: liner-plus/package-lock.json
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: liner-plus/src-tauri
+      - run: npm ci
+      - run: npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.args }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Verse-${{ runner.os }}
+          path: |
+            liner-plus/src-tauri/target/**/release/bundle/deb/*.deb
+            liner-plus/src-tauri/target/**/release/bundle/appimage/*.AppImage
+            liner-plus/src-tauri/target/**/release/bundle/dmg/*.dmg
+            liner-plus/src-tauri/target/**/release/bundle/nsis/*.exe
+          if-no-files-found: error

@@ -1,0 +1,178 @@
+:root {
+  --text: #f4f2f7;
+  --text-2: rgb(244 242 247 / 0.66);
+  --text-3: rgb(244 242 247 / 0.42);
+  --glass: rgb(16 14 24 / 0.42);
+  --glass-strong: rgb(14 12 20 / 0.72);
+  --line: rgb(255 255 255 / 0.08);
+  --hover: rgb(255 255 255 / 0.07);
+  --active: rgb(255 255 255 / 0.12);
+  --accent: #ff5d8f;
+  --accent-2: #ffb36b;
+  --radius: 12px;
+  --bar-h: 88px;
+  --side-w: 236px;
+  --font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --display: 'Inter Tight', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  /* Only on html: a body background would paint over the z-index:-1 visuals layer. */
+  background: #0d0b14;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  color: var(--text);
+  font: 14px/1.45 var(--font);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+#app {
+  height: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+}
+
+img {
+  display: block;
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--text-2);
+  transition: color 0.15s, background 0.15s, transform 0.1s;
+}
+.icon-btn:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.icon-btn:active {
+  transform: scale(0.94);
+}
+.icon-btn.on {
+  color: var(--accent);
+}
+.icon-btn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--hover);
+  font-weight: 600;
+  transition: background 0.15s, transform 0.1s;
+}
+.pill:hover {
+  background: var(--active);
+}
+.pill.primary {
+  background: var(--text);
+  color: #111;
+}
+.pill.primary:hover {
+  background: #fff;
+  transform: scale(1.03);
+}
+
+.scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+}
+
+.muted {
+  color: var(--text-2);
+}
+
+.ellipsis {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.link {
+  cursor: pointer;
+}
+.link:hover {
+  text-decoration: underline;
+  color: var(--text);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0.1), rgb(255 255 255 / 0.05));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 8px;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+kbd {
+  font: 600 11px/1 var(--font);
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: rgb(255 255 255 / 0.1);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  color: var(--text-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

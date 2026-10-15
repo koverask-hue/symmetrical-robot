@@ -1,5 +1,6 @@
 // Game controller: input, shots, rules, the computer opponent and the side sheet.
-import { R, HX, HZ, rack, strike, Shot, canPlace, castAim, HEAD_SPOT, FOOT_SPOT, MAX_SPEED, cloneBalls } from './physics.js';
+import { R, HX, HZ, rack, strike, step, Shot, canPlace, castAim, HEAD_SPOT, FOOT_SPOT, MAX_SPEED, cloneBalls } from './physics.js';
+import { CUES, cueThumbnail } from './cues.js';
 import { newGame, judge, onTableSet, groupOf, SOLIDS, STRIPES, legalTargets } from './rules.js';
 import { LEVELS, planShot } from './ai.js';
 import { PoolScene, MIN_ELEVATION } from './table.js';
@@ -42,6 +43,9 @@ const state = {
   sound: store.get('sound', true) !== false,
   view: VIEWS.includes(store.get('view', 'aim')) ? store.get('view', 'aim') : 'aim',
   elevation: MIN_ELEVATION,
+  cueAngle: Math.min(80, Math.max(0, Number(store.get('cueAngle', 0)) || 0)), // degrees; 0 = as low as possible
+  aiElevation: 0,
+  cueId: CUES.some((c) => c.id === store.get('cue', 'heritage')) ? store.get('cue', 'heritage') : 'heritage',
   shot: null,
   before: null,
   rackId: 0,
@@ -159,7 +163,8 @@ async function shoot(power) {
   await tween(0.07 + 0.05 * (1 - power), (t) => scene.setCue(cue(), state.aim, pullFrom * (1 - t) + 0.001, state.spin.a, state.spin.b, state.elevation), (t) => t * t);
   sound.play('cue', speed);
   state.before = onTableSet(state.balls);
-  strike(cue(), { angle: state.aim, speed, a: state.spin.a, b: state.spin.b });
+  strike(cue(), { angle: state.aim, speed, a: state.spin.a, b: state.spin.b, elevation: state.elevation });
+  scene.showPath(null);
   state.shot = new Shot(state.balls, { breakShot: state.game.breakShot });
   state.processed = 0;
   state.phase = 'rolling';
@@ -175,7 +180,11 @@ function processEvents() {
     if (e.type === 'ball') sound.play('ball', e.speed);
     else if (e.type === 'rail') sound.play('rail', e.speed);
     else if (e.type === 'jaw') sound.play('jaw', e.speed);
-    else if (e.type === 'pocket') {
+    else if (e.type === 'land') sound.play('rail', e.speed * 0.6);
+    else if (e.type === 'offtable') {
+      sound.play('jaw', 2);
+      scene.throwOff(e.ball, e);
+    } else if (e.type === 'pocket') {
       sound.play('pocket');
       scene.dropBall(e.ball, e.pocket, e.speed);
       updateRacks();
@@ -195,6 +204,15 @@ function endShot() {
     Object.assign(eight, { on: true, x, z: 0, vx: 0, vz: 0, wx: 0, wy: 0, wz: 0, pocket: -1 });
     scene.ballMeshes.get(8).userData.inPocket = false;
     snackbar('The 8 went down on the break, so it is spotted.');
+  }
+  if (result.respot?.length) {
+    for (const id of result.respot) {
+      const ball = state.balls.find((b) => b.id === id);
+      let x = FOOT_SPOT.x;
+      while (!canPlace(state.balls.filter((b) => b.id !== id), x, 0) && x < HX - R) x += 0.01;
+      Object.assign(ball, { on: true, x, z: 0, y: 0, vx: 0, vy: 0, vz: 0, wx: 0, wy: 0, wz: 0, pocket: -1 });
+      scene.ballMeshes.get(id).userData.inPocket = false;
+    }
   }
   if (result.assigned) {
     const who = names()[state.game.groups.indexOf(result.assigned)];
@@ -277,6 +295,7 @@ async function computerTurn() {
   da = Math.atan2(Math.sin(da), Math.cos(da));
   state.spin = { a: p.a, b: p.b };
   syncSpin();
+  state.aiElevation = p.elevation ?? 0;
   await tween(0.7, (t) => (state.aim = a0 + da * t), smooth);
   const target = Math.min(1, Math.pow(Math.max(0, (p.speed - 0.25) / (MAX_SPEED - 0.6)), 1 / 1.35));
   await tween(0.6, (t) => (state.power = target * smooth(t)));
@@ -518,9 +537,131 @@ $('spin-reset').addEventListener('click', () => {
 let shownElevation = -1;
 function syncElevation() {
   const deg = Math.round((state.elevation * 180) / Math.PI);
-  if (deg === shownElevation) return;
-  shownElevation = deg;
-  $('elevation').textContent = deg <= 5 ? `Cue nearly level (${deg}°).` : `Cue raised to ${deg}° to clear ${deg > 25 ? 'the ball or rail in the way' : 'the rail'}.`;
+  const key = deg * 10 + (state.cueAngle > 0 ? 1 : 0);
+  if (key === shownElevation) return;
+  shownElevation = key;
+  const raisedFor = state.cueAngle > 0 && deg <= state.cueAngle + 1 ? null : deg > 5 ? 'to clear what is behind the cue ball' : null;
+  const kind = deg >= 60 ? 'Masse' : deg >= 28 ? 'Jump' : deg >= 12 ? 'Raised' : 'Level';
+  $('elevation').textContent = raisedFor ? `Cue at ${deg}°, raised ${raisedFor}.` : `${kind} cue, ${deg}°.`;
+}
+
+function syncCueAngle() {
+  const v = state.cueAngle;
+  $('cue-angle').value = String(v);
+  $('cue-angle').style.setProperty('--fill', `${(v / 80) * 100}%`);
+  $('cue-angle-value').textContent = v === 0 ? 'Lowest' : `${v}°`;
+  $('cue-angle').setAttribute('aria-valuetext', v === 0 ? 'As low as the table allows' : `${v} degrees`);
+  for (const b of $('angle-presets').querySelectorAll('button')) b.setAttribute('aria-checked', String(Number(b.dataset.angle) === v));
+  $('angle-desc').textContent = v >= 60
+    ? 'Masse: strike down on the side of the ball and it curves. Set left or right spin to choose the bend.'
+    : v >= 28
+      ? 'Jump: the cue drives the ball into the slate and it hops. More power, more height; it can clear a ball in the way.'
+      : v > 0
+        ? 'A raised cue adds a small hop and some swerve with side spin.'
+        : 'The cue stays as low as the rails and balls allow.';
+}
+
+function setCueAngle(v) {
+  state.cueAngle = Math.round(Math.min(80, Math.max(0, v)));
+  store.set('cueAngle', state.cueAngle);
+  syncCueAngle();
+}
+
+const thumbQueue = [];
+function drainThumbs() {
+  const job = thumbQueue.shift();
+  if (!job) return;
+  job();
+  const next = () => setTimeout(drainThumbs, 60);
+  'requestIdleCallback' in window ? requestIdleCallback(next, { timeout: 1500 }) : next();
+}
+setTimeout(drainThumbs, 2500);
+
+function renderCuePicker() {
+  const list = $('cue-list');
+  list.replaceChildren(...CUES.map((d) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cue-card';
+    b.setAttribute('role', 'radio');
+    b.dataset.cue = d.id;
+    const img = document.createElement('img');
+    img.alt = '';
+    img.width = 420;
+    img.height = 40;
+    // Each thumbnail paints a full cue skin (a few hundred ms), so they trickle in one at a time.
+    thumbQueue.push(() => (img.src = cueThumbnail(d)));
+    const name = document.createElement('span');
+    name.className = 'cue-card__name';
+    name.textContent = d.name;
+    const tag = document.createElement('span');
+    tag.className = 'cue-card__tag';
+    tag.textContent = d.tagline;
+    b.append(img, name, tag);
+    b.addEventListener('click', () => selectCue(d.id, true));
+    return b;
+  }));
+  syncCuePicker();
+}
+
+function syncCuePicker() {
+  for (const b of $('cue-list').children) b.setAttribute('aria-checked', String(b.dataset.cue === state.cueId));
+}
+
+function selectCue(id, showcase = false) {
+  const design = CUES.find((c) => c.id === id) ?? CUES[0];
+  state.cueId = design.id;
+  store.set('cue', design.id);
+  scene.setCueDesign(design);
+  syncCuePicker();
+  if (showcase && scene.cue.visible) {
+    // Swing round to look at the butt of the new cue for a moment.
+    const p = showcasePoint(scene.cue);
+    scene.rig.showcase(p.target, p.yaw, 0.28, 0.42, 2.6);
+  }
+}
+
+// Point a little way down the cue from the tip, and a viewing angle from its side.
+function showcasePoint(cueGroup) {
+  const a = state.aim;
+  const back = 0.82; // the forearm, where the points and inlays are
+  return {
+    target: { x: cueGroup.position.x - Math.cos(a) * back, y: cueGroup.position.y + Math.sin(state.elevation) * back + 0.02, z: cueGroup.position.z - Math.sin(a) * back },
+    yaw: a + Math.PI / 2,
+  };
+}
+
+// Where will the cue ball go? Simulated alone (other balls included as obstacles) until it touches
+// something; drawn when a raised cue or side spin bends the path.
+let pathKey = '';
+let pathAt = 0;
+function updatePathPreview() {
+  const deg = (state.elevation * 180) / Math.PI;
+  if (state.guide !== 'full' || state.phase !== 'aim' || deg < 9) {
+    if (pathKey) scene.showPath(null);
+    pathKey = '';
+    return false;
+  }
+  const power = state.power > 0.02 ? state.power : 0.45;
+  const key = [state.aim.toFixed(4), power.toFixed(2), state.spin.a.toFixed(2), state.spin.b.toFixed(2), deg.toFixed(1), cue().x.toFixed(3), cue().z.toFixed(3)].join();
+  const now = performance.now();
+  if (key === pathKey || now - pathAt < 70) return true;
+  pathKey = key;
+  pathAt = now;
+  const balls = cloneBalls(state.balls);
+  const c = balls[0];
+  strike(c, { angle: state.aim, speed: shotSpeed(power), a: state.spin.a, b: state.spin.b, elevation: state.elevation });
+  const pts = [];
+  const events = [];
+  for (let i = 0; i < 1200 && pts.length < 90; i++) {
+    step(balls, 1 / 400, events, 0);
+    if (i % 6 === 0) pts.push([c.x, R + c.y, c.z]);
+    if (events.some((e) => e.type === 'ball' || e.type === 'pocket' || e.type === 'offtable')) break;
+    if (!c.on || (c.vx === 0 && c.vz === 0 && c.y === 0)) break;
+  }
+  pts.push([c.x, R + c.y, c.z]);
+  scene.showPath(pts);
+  return true;
 }
 
 function syncSpin() {
@@ -725,16 +866,21 @@ function advance(dt) {
   const aiming = (state.phase === 'aim' && humanTurn()) || state.phase === 'ai';
   if (aiming && !state.game.over) {
     const gap = 0.03 + state.power * 0.22;
-    const want = scene.cueElevation(state.balls, cue(), state.aim, state.spin.b, gap);
+    const need = scene.cueElevation(state.balls, cue(), state.aim, state.spin.b, gap);
+    const chosen = humanTurn() ? (state.cueAngle * Math.PI) / 180 : state.aiElevation;
+    const want = Math.max(need, chosen);
     state.elevation += (want - state.elevation) * Math.min(1, dt * 12);
     scene.setCue(cue(), state.aim, gap, state.spin.a, state.spin.b, state.elevation);
     syncElevation();
-    if (state.phase === 'aim') scene.showGuide(cue(), castAim(state.balls, cue(), state.aim), state.guide);
+    // A raised cue bends or lifts the path: the dotted preview replaces the straight guide.
+    const curved = updatePathPreview();
+    if (state.phase === 'aim') scene.showGuide(cue(), castAim(state.balls, cue(), state.aim), curved ? 'off' : state.guide);
     else scene.hideGuide();
     scene.showPlacement(state.phase === 'aim' && state.game.ballInHand ? cue() : null, true);
   } else if (state.phase !== 'stroke' && state.phase !== 'rolling') {
     scene.hideGuide();
     scene.showPlacement(null);
+    scene.showPath(null);
     scene.cue.visible = false;
   }
   $('power-fill').style.height = `${state.power * 100}%`;
@@ -746,6 +892,14 @@ new ResizeObserver(() => scene.resize()).observe(canvas);
 
 // ---- boot -----------------------------------------------------------------
 
+$('cue-angle').addEventListener('input', (e) => setCueAngle(Number(e.target.value)));
+$('angle-presets').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-angle]');
+  if (b) setCueAngle(Number(b.dataset.angle));
+});
+renderCuePicker();
+selectCue(state.cueId);
+syncCueAngle();
 renderLevels();
 syncSoundButton();
 setView(state.view);
@@ -755,4 +909,4 @@ newRack();
 requestAnimationFrame(frame);
 
 // Handle for automated checks.
-window.eightBall = { state, scene, shoot, advance, startTurn, newRack, groupOf, setView };
+window.eightBall = { state, scene, shoot, advance, startTurn, newRack, groupOf, setView, selectCue, setCueAngle };

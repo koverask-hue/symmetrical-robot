@@ -57,6 +57,7 @@ export class CameraRig {
   }
 
   orbit(dx, dy) {
+    this.cine = null;
     if (this.mode === 'free') {
       this.free.yaw += dx * 0.006;
       this.free.pitch = clamp(this.free.pitch - dy * 0.005, 0.05, 1.55);
@@ -86,9 +87,21 @@ export class CameraRig {
     this.free.target.z = clamp(this.free.target.z, -HZ - 0.6, HZ + 0.6);
   }
 
+  // Briefly frame something (a newly chosen cue), then return to the current view.
+  showcase(target, yaw, pitch, dist, hold) {
+    this.cine = { target: new THREE.Vector3(target.x, target.y, target.z), yaw, pitch, dist, hold };
+  }
+
   // Called every frame with what is happening on the table.
   frame({ phase, cue, aim, balls }) {
     const g = this.goal;
+    if (this.cine) {
+      g.target.copy(this.cine.target);
+      g.yaw = this.cine.yaw;
+      g.pitch = this.cine.pitch;
+      g.dist = this.cine.dist;
+      return;
+    }
     const o = this.offsets[this.mode];
     if (this.mode === 'free') {
       g.target.copy(this.free.target);
@@ -140,6 +153,7 @@ export class CameraRig {
   }
 
   update(dt) {
+    if (this.cine && (this.cine.hold -= dt) <= 0) this.cine = null;
     const k = this.snap ? 1 : 1 - Math.exp(-dt * 6);
     this.snap = false;
     this.target.lerp(this.goal.target, k);

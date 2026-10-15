@@ -1,18 +1,15 @@
 // Models: the table (built from the physics geometry), the cue, and a bright loft to put them in.
 import * as THREE from '../vendor/three.module.js';
-import { R, HX, HZ, TABLE, POCKETS, SEGMENTS, HEAD_STRING_X } from './physics.js';
 import {
-  clothTexture, woodTexture, plasterTexture, brickTexture, rugTexture, skylineTexture, cueTexture, plateTexture, artTexture,
+  R, HX, HZ, TABLE, POCKETS, SEGMENTS, HEAD_STRING_X, CUSHION_TOP, RAIL_TOP, RAIL_IN, RAIL_W, OUT_X, OUT_Z, CUE_LENGTH,
+} from './physics.js';
+import { CUES, buildCueModel } from './cues.js';
+import {
+  clothMaps, clothWear, woodMaps, plasterTexture, brickTexture, rugTexture, skylineTexture, plateTexture, artTexture,
 } from './textures.js';
 
+export { CUSHION_TOP, RAIL_TOP, RAIL_IN, RAIL_W, OUT_X, OUT_Z, CUE_LENGTH };
 export const FLOOR_Y = -0.76;
-export const CUSHION_TOP = 0.046;
-export const RAIL_TOP = 0.052;
-export const RAIL_IN = 0.05; // cushion depth behind the nose line
-export const RAIL_W = 0.15; // wooden rail width
-export const OUT_X = HX + RAIL_IN + RAIL_W;
-export const OUT_Z = HZ + RAIL_IN + RAIL_W;
-export const CUE_LENGTH = 1.47;
 const RAIL_BOTTOM = -0.1;
 const CEILING_Y = FLOOR_Y + 3.3;
 
@@ -32,16 +29,28 @@ const shadow = (m, cast = true, receive = true) => {
 
 export function buildTable() {
   const t = new THREE.Group();
-  const clothTex = clothTexture();
-  clothTex.repeat.set(7, 3.5);
-  const cloth = new THREE.MeshStandardMaterial({ map: clothTex, roughness: 0.92 });
-  const railCloth = cloth.clone();
-  railCloth.map = clothTex.clone();
-  railCloth.map.repeat.set(14, 14);
-  railCloth.map.needsUpdate = true;
+  const clothSet = clothMaps();
+  // Worsted cloth with a velvet sheen; the cushions use the same cloth at the same scale.
+  const clothMat = (rx, ry) => {
+    const map = clothSet.map.clone();
+    const normalMap = clothSet.normalMap.clone();
+    for (const t of [map, normalMap]) {
+      t.repeat.set(rx, ry);
+      t.needsUpdate = true;
+    }
+    return new THREE.MeshPhysicalMaterial({
+      map, normalMap, normalScale: new THREE.Vector2(0.7, 0.7), roughness: 0.93,
+      sheen: 0.6, sheenColor: new THREE.Color(0x2f8a60), sheenRoughness: 0.6,
+    });
+  };
+  // UVs are in metres: one tile of cloth covers about 70 cm, so its weave stays visible up close.
+  const cloth = clothMat(1.4, 1.4);
+  const railCloth = clothMat(0.47, 0.47);
+  // Lacquered Honduran mahogany with ribbon figure.
+  const railWood = woodMaps({ base: [124, 56, 30], dark: [58, 22, 10], rings: 30, figure: 0.1, seed: 7 });
   const mahogany = new THREE.MeshPhysicalMaterial({
-    map: woodTexture({ base: [150, 74, 38], dark: [78, 32, 14], rings: 48 }),
-    roughness: 0.42, clearcoat: 0.9, clearcoatRoughness: 0.12,
+    map: railWood.map, normalMap: railWood.normalMap, normalScale: new THREE.Vector2(0.4, 0.4), roughnessMap: railWood.roughnessMap,
+    roughness: 1, clearcoat: 1, clearcoatRoughness: 0.08,
   });
   const chrome = new THREE.MeshStandardMaterial({ color: 0xa9a9b0, metalness: 1, roughness: 0.32 });
   const leather = new THREE.MeshStandardMaterial({ color: 0x3a2214, roughness: 0.55 });
@@ -64,6 +73,13 @@ export function buildTable() {
   const bed = new THREE.Mesh(new THREE.ShapeGeometry(bedShape, 40).rotateX(-Math.PI / 2), cloth);
   bed.receiveShadow = true;
   t.add(bed);
+  const wear = new THREE.Mesh(
+    new THREE.PlaneGeometry(TABLE.L, TABLE.W).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ map: clothWear(), transparent: true, depthWrite: false, roughness: 1 }),
+  );
+  wear.position.y = 0.0004;
+  wear.receiveShadow = true;
+  t.add(wear);
   const slate = new THREE.Mesh(new THREE.BoxGeometry(ex * 2, 0.03, ez * 2), new THREE.MeshStandardMaterial({ color: 0x2a2a2c }));
   slate.position.y = -0.0151 - 0.03;
   t.add(slate);
@@ -186,9 +202,10 @@ export function buildTable() {
   }
 
   // Apron with a moulding, turned legs and a brass plate.
+  const apronWood = woodMaps({ base: [118, 52, 28], dark: [54, 20, 8], rings: 26, figure: 0.06, seed: 4, w: 1024, h: 512 });
   const apronMat = new THREE.MeshPhysicalMaterial({
-    map: woodTexture({ base: [128, 62, 32], dark: [66, 26, 12], seed: 4, rings: 40 }),
-    roughness: 0.45, clearcoat: 0.7, clearcoatRoughness: 0.2,
+    map: apronWood.map, normalMap: apronWood.normalMap, normalScale: new THREE.Vector2(0.4, 0.4), roughnessMap: apronWood.roughnessMap,
+    roughness: 1, clearcoat: 0.85, clearcoatRoughness: 0.12,
   });
   const apronShape = roundedRect(OUT_X - 0.03, OUT_Z - 0.03, 0.08);
   const apronGeo = new THREE.ExtrudeGeometry(apronShape, { depth: 0.16, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 3 });
@@ -298,42 +315,8 @@ export function repairNormals(geo) {
 // Cue
 // ---------------------------------------------------------------------------
 
-let cueGeo = null;
-let cueMat = null;
-export function cueParts() {
-  if (!cueGeo) {
-    // Radius along the length, butt (0) to tip (1): a pro taper on the shaft, a slow taper on the butt.
-    const radius = (v) => {
-      if (v < 0.5) return 0.0148 - v * 0.0072;
-      const s = (v - 0.5) / 0.5;
-      return 0.0108 - 0.0042 * Math.min(1, Math.pow(s, 0.65));
-    };
-    const pts = [new THREE.Vector2(0, 0)];
-    const N = 240;
-    for (let i = 0; i <= N; i++) {
-      const v = i / N;
-      pts.push(new THREE.Vector2(radius(v), v * CUE_LENGTH));
-    }
-    // A slightly domed tip.
-    for (let i = 1; i <= 4; i++) {
-      const a = (i / 4) * (Math.PI / 2);
-      pts.push(new THREE.Vector2(radius(1) * Math.cos(a), CUE_LENGTH + Math.sin(a) * 0.0025));
-    }
-    cueGeo = new THREE.LatheGeometry(pts, 32);
-    cueGeo.rotateZ(-Math.PI / 2); // along +x, tip at x = CUE_LENGTH
-    cueGeo.translate(-CUE_LENGTH - 0.0025, 0, 0); // tip at the origin
-    cueMat = new THREE.MeshPhysicalMaterial({ map: cueTexture(), roughness: 0.38, clearcoat: 0.8, clearcoatRoughness: 0.15 });
-  }
-  return { geometry: cueGeo, material: cueMat };
-}
-
-export function buildCue() {
-  const { geometry, material } = cueParts();
-  const m = new THREE.Mesh(geometry, material);
-  m.castShadow = true;
-  const g = new THREE.Group();
-  g.add(m);
-  return g;
+export function buildCue(design = CUES[0]) {
+  return buildCueModel(design);
 }
 
 // ---------------------------------------------------------------------------
@@ -343,9 +326,11 @@ export function buildCue() {
 export function buildRoom() {
   const room = new THREE.Group();
   const W = 6.2, D = 5; // half extents
-  const floorTex = woodTexture({ base: [214, 176, 128], dark: [176, 132, 86], planks: 10, w: 2048, h: 2048, seed: 12, rings: 90 });
-  floorTex.repeat.set(4, 4);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, D * 2), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.5 }));
+  const oak = woodMaps({ base: [218, 178, 128], dark: [168, 120, 76], planks: 8, w: 1536, h: 1536, seed: 12, rings: 7, figure: 0.03, gloss: 0.45 });
+  for (const t of [oak.map, oak.normalMap, oak.roughnessMap]) t.repeat.set(4, 4);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, D * 2), new THREE.MeshStandardMaterial({
+    map: oak.map, normalMap: oak.normalMap, normalScale: new THREE.Vector2(0.6, 0.6), roughnessMap: oak.roughnessMap, roughness: 1,
+  }));
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = FLOOR_Y;
   floor.receiveShadow = true;
@@ -409,7 +394,8 @@ export function buildRoom() {
   ceiling.rotation.x = Math.PI / 2;
   ceiling.position.y = CEILING_Y;
   room.add(ceiling);
-  const beamMat = new THREE.MeshStandardMaterial({ map: woodTexture({ base: [120, 86, 58], dark: [78, 52, 32], seed: 2 }), roughness: 0.8 });
+  const beamWood = woodMaps({ base: [128, 92, 62], dark: [78, 52, 32], seed: 2, w: 1024, h: 256, rings: 12, gloss: 0.8 });
+  const beamMat = new THREE.MeshStandardMaterial({ map: beamWood.map, normalMap: beamWood.normalMap, roughness: 0.85 });
   for (let x = -W + 1; x < W; x += 1.8) {
     const beam = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, D * 2), beamMat);
     beam.position.set(x, CEILING_Y - 0.14, 0);
@@ -451,13 +437,18 @@ export function buildRoom() {
   const rackBoard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.45, 0.9), beamMat);
   rackBoard.position.set(-W + 0.03, FLOOR_Y + 1.2, -1.2);
   room.add(shadow(rackBoard));
-  const { geometry, material } = cueParts();
-  for (let i = 0; i < 5; i++) {
-    const c = new THREE.Mesh(geometry, material);
-    c.rotation.z = Math.PI / 2; // tip up
-    c.position.set(-W + 0.09, FLOOR_Y + 0.05 + CUE_LENGTH + 0.0025, -1.5 + i * 0.15);
-    room.add(shadow(c));
-  }
+  // The rack shows every cue design; filled in after the first frame so start-up stays quick.
+  const rack = new THREE.Group();
+  room.add(rack);
+  const fillRack = async () => {
+    for (let i = 0; i < CUES.length; i++) {
+      await new Promise((r) => setTimeout(r, 120));
+      const c = buildCueModel(CUES[i]);
+      c.rotation.z = Math.PI / 2; // tip up
+      c.position.set(-W + 0.1, FLOOR_Y + 0.05 + CUE_LENGTH + 0.0025, -1.56 + i * 0.12);
+      rack.add(shadow(c));
+    }
+  };
   const tri = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.012, 6, 3), beamMat);
   tri.position.set(-W + 0.07, FLOOR_Y + 1.6, 0.0);
   tri.rotation.y = Math.PI / 2;
@@ -532,5 +523,5 @@ export function buildRoom() {
     plant.position.set(px, FLOOR_Y, pz);
     room.add(shadow(plant));
   }
-  return { group: room, pendantMeshes: pendant.children.filter((c) => c.isMesh) };
+  return { group: room, pendantMeshes: pendant.children.filter((c) => c.isMesh), fillRack };
 }

@@ -52,7 +52,12 @@ export function judge(game, before, events) {
   let firstHit = null;
   let railAfterContact = false;
   const pocketed = [];
+  const offTable = [];
   for (const e of events) {
+    if (e.type === 'offtable') {
+      offTable.push(e.ball);
+      continue;
+    }
     if (e.type === 'ball' && firstHit === null && (e.a === 0 || e.b === 0)) firstHit = e.a === 0 ? e.b : e.a;
     else if ((e.type === 'rail' || e.type === 'jaw') && firstHit !== null) railAfterContact = true;
     else if (e.type === 'pocket') {
@@ -61,17 +66,30 @@ export function judge(game, before, events) {
     }
   }
   const scratch = pocketed.includes(0);
+  const cueOff = offTable.includes(0);
   const objects = pocketed.filter((id) => id !== 0);
   const eight = objects.includes(8);
   const legal = legalTargets(game, before);
 
   let foul = null;
   if (scratch) foul = 'Scratch';
+  else if (cueOff) foul = 'Cue ball jumped off the table';
+  else if (offTable.length) foul = 'Ball jumped off the table';
   else if (firstHit === null) foul = 'No ball hit';
   else if (!legal.includes(firstHit)) foul = 'Wrong ball hit first';
   else if (!game.breakShot && !objects.length && !railAfterContact) foul = 'No rail after contact';
 
-  const result = { foul, pocketed: objects, scratch, firstHit, respotEight: false, assigned: null };
+  // Object balls that leave the table are spotted (all but the 8, which loses the game).
+  const result = { foul, pocketed: objects, scratch: scratch || cueOff, firstHit, respotEight: false, assigned: null, respot: offTable.filter((id) => id !== 0 && id !== 8) };
+  if (offTable.includes(8) && !game.breakShot) {
+    next.over = true;
+    next.winner = opp;
+    next.message = 'The 8 jumped off the table';
+    next.ballInHand = null;
+    next.breakShot = false;
+    return { game: next, result };
+  }
+  if (offTable.includes(8)) result.respotEight = true;
   next.breakShot = false;
 
   // The 8-ball

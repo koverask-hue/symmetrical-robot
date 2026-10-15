@@ -382,3 +382,187 @@ export function artTexture(seed = 1) {
   }
   return tex(c);
 }
+
+// ---------------------------------------------------------------------------
+// Physically-based surface sets (colour + normal + roughness)
+// ---------------------------------------------------------------------------
+
+function heightToNormal(h, w, hh, strength, wrap = true) {
+  const [c, g] = canvas(w, hh);
+  const img = g.createImageData(w, hh);
+  const at = (x, y) => {
+    if (wrap) {
+      x = (x + w) % w;
+      y = (y + hh) % hh;
+    } else {
+      x = Math.min(w - 1, Math.max(0, x));
+      y = Math.min(hh - 1, Math.max(0, y));
+    }
+    return h[y * w + x];
+  };
+  for (let y = 0; y < hh; y++) {
+    for (let x = 0; x < w; x++) {
+      const dx = (at(x + 1, y) - at(x - 1, y)) * strength;
+      const dy = (at(x, y + 1) - at(x, y - 1)) * strength;
+      const l = Math.hypot(dx, dy, 1);
+      const i = (y * w + x) * 4;
+      img.data[i] = (-dx / l * 0.5 + 0.5) * 255;
+      img.data[i + 1] = (dy / l * 0.5 + 0.5) * 255;
+      img.data[i + 2] = (1 / l * 0.5 + 0.5) * 255;
+      img.data[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return tex(c, { srgb: false, repeat: true });
+}
+
+function greyTexture(values, w, h) {
+  const [c, g] = canvas(w, h);
+  const img = g.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) {
+    const v = Math.max(0, Math.min(255, values[i] * 255));
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
+    img.data[i * 4 + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return tex(c, { srgb: false, repeat: true });
+}
+
+// Worsted tournament cloth: woven fibre, a faint directional nap and slight dye mottling.
+export function clothMaps(base = [14, 98, 66], size = 1024) {
+  const [c, g] = canvas(size);
+  const img = g.createImageData(size, size);
+  const height = new Float32Array(size * size);
+  const n1 = noise(41), n2 = noise(42), n3 = noise(43);
+  const r = rng(99);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const weave = Math.sin(x * 1.6) * Math.sin(y * 1.6) * 0.5 + 0.5; // tight twill at texel scale
+      const fibre = r();
+      const nap = n1(x / 48, y / 2.2); // streaks along the table's length
+      const mottle = n2(x / 160, y / 160) * 0.6 + n3(x / 30, y / 30) * 0.4;
+      const k = 0.9 + 0.05 * weave + 0.06 * fibre + 0.05 * nap + 0.05 * mottle;
+      const i = (y * size + x) * 4;
+      img.data[i] = Math.min(255, base[0] * k);
+      img.data[i + 1] = Math.min(255, base[1] * k);
+      img.data[i + 2] = Math.min(255, base[2] * k);
+      img.data[i + 3] = 255;
+      height[y * size + x] = 0.45 * weave + 0.35 * fibre + 0.2 * nap;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return { map: tex(c, { repeat: true }), normalMap: heightToNormal(height, size, size, 1.6) };
+}
+
+// Wood with growth rings, open pores and a ribbon figure. Grain runs along x.
+export function woodMaps({
+  base = [168, 84, 44], dark = [96, 38, 18], w = 2048, h = 512, rings = 34, figure = 0.08, pores = 1, seed = 7,
+  planks = 0, gloss = 0.35,
+} = {}) {
+  const [c, g] = canvas(w, h);
+  const img = g.createImageData(w, h);
+  const height = new Float32Array(w * h);
+  const rough = new Float32Array(w * h);
+  const n1 = noise(seed), n2 = noise(seed + 1), n3 = noise(seed + 2);
+  for (let y = 0; y < h; y++) {
+    const plank = planks ? Math.floor((y / h) * planks) : 0;
+    const py = planks ? (y / h) * planks - plank : y / h;
+    const tone = planks ? 0.88 + 0.24 * n3(plank * 7.3, 1.7) : 1;
+    for (let x = 0; x < w; x++) {
+      const xx = x + plank * 977;
+      const warp = n1(xx / 260, py * 6 + plank * 3) * 2.2 + n2(xx / 60, py * 30) * 0.35;
+      const v = py * rings + warp;
+      const f = v - Math.floor(v);
+      const late = f > 0.72 ? Math.pow((f - 0.72) / 0.28, 1.5) : 0; // dark latewood band
+      const fig = 1 + figure * Math.sin(xx / 38 + n2(xx / 120, py * 4) * 6); // ribbon/chatoyance
+      const streak = 0.94 + 0.08 * n3(xx / 6, py * 160);
+      let k = (1 - late * 0.55) * streak;
+      const i = (y * w + x) * 4;
+      for (let ch = 0; ch < 3; ch++) {
+        const col = base[ch] + (dark[ch] - base[ch]) * (late * 0.8 + (1 - streak) * 2);
+        img.data[i + ch] = Math.max(0, Math.min(255, col * fig * tone * (0.97 + 0.03 * k)));
+      }
+      img.data[i + 3] = 255;
+      height[y * w + x] = -late * 0.4 + (streak - 1) * 2;
+      rough[y * w + x] = gloss + late * 0.15;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  // Open pores: short dark dashes along the grain.
+  const r = rng(seed * 13);
+  g.globalAlpha = 0.35;
+  g.fillStyle = `rgb(${dark[0] * 0.5},${dark[1] * 0.5},${dark[2] * 0.5})`;
+  const count = Math.floor((w * h) / 900 * pores);
+  for (let i = 0; i < count; i++) {
+    const x = r() * w, y = r() * h;
+    const len = 4 + r() * 16;
+    g.fillRect(x, y, len, 1);
+    const idx = Math.floor(y) * w;
+    for (let k = 0; k < len && x + k < w; k++) {
+      height[idx + Math.floor(x + k)] -= 0.8;
+      rough[idx + Math.floor(x + k)] += 0.3;
+    }
+  }
+  g.globalAlpha = 1;
+  if (planks) {
+    g.fillStyle = 'rgba(30,18,8,0.6)';
+    for (let p = 1; p < planks; p++) {
+      const y = Math.floor((p / planks) * h);
+      g.fillRect(0, y - 1, w, 2);
+      for (let x = 0; x < w; x++) {
+        height[(y - 1) * w + x] -= 3;
+        height[y * w + x] -= 3;
+      }
+    }
+    for (let p = 0; p < planks; p++) {
+      const y0 = Math.floor((p / planks) * h), y1 = Math.floor(((p + 1) / planks) * h);
+      for (const off of [(p * 397) % w, ((p * 397) + w / 2) % w]) {
+        g.fillRect(off, y0, 2, y1 - y0);
+        for (let y = y0; y < y1; y++) height[y * w + Math.floor(off)] -= 3;
+      }
+    }
+  }
+  return { map: tex(c, { repeat: true }), normalMap: heightToNormal(height, w, h, 1.2), roughnessMap: greyTexture(rough, w, h) };
+}
+
+// Non-repeating wear for the bed: a faint track where breaks run, smudges around the spots, and
+// blue chalk dust near the rails and pockets. Covers the playing area (x right, z down).
+export function clothWear(w = 2048, h = 1024) {
+  const [c, g] = canvas(w, h);
+  g.clearRect(0, 0, w, h);
+  const r = rng(404);
+  // break track and cue path along the centre line
+  const track = g.createLinearGradient(0, h / 2 - 60, 0, h / 2 + 60);
+  track.addColorStop(0, 'rgba(255,255,255,0)');
+  track.addColorStop(0.5, 'rgba(255,255,255,0.05)');
+  track.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = track;
+  g.fillRect(w * 0.18, h / 2 - 60, w * 0.64, 120);
+  for (const x of [w * 0.25, w * 0.75]) {
+    const spot = g.createRadialGradient(x, h / 2, 0, x, h / 2, 70);
+    spot.addColorStop(0, 'rgba(255,255,255,0.08)');
+    spot.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = spot;
+    g.fillRect(x - 70, h / 2 - 70, 140, 140);
+  }
+  // chalk dust: small blue smudges, mostly near the rails and pockets
+  for (let i = 0; i < 140; i++) {
+    const nearRail = r() < 0.7;
+    let x = r() * w, y = r() * h;
+    if (nearRail) {
+      const side = Math.floor(r() * 4);
+      if (side === 0) y = r() * 50;
+      else if (side === 1) y = h - r() * 50;
+      else if (side === 2) x = r() * 50;
+      else x = w - r() * 50;
+    }
+    const s = 3 + r() * 9;
+    const smudge = g.createRadialGradient(x, y, 0, x, y, s);
+    smudge.addColorStop(0, `rgba(70,120,200,${0.03 + r() * 0.06})`);
+    smudge.addColorStop(1, 'rgba(70,120,200,0)');
+    g.fillStyle = smudge;
+    g.fillRect(x - s, y - s, s * 2, s * 2);
+  }
+  const t = tex(c);
+  return t;
+}

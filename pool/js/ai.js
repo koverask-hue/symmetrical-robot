@@ -1,7 +1,7 @@
 // Computer opponent. It finds pottable balls with ghost-ball geometry, tests the best candidates in the
 // real physics (spin and pace variations included), scores the outcomes with the real rules, and then
 // misses like a person of the chosen level would: by adding aim and pace error.
-import { R, HX, HZ, POCKETS, cloneBalls, strike, simulate, canPlace, HEAD_STRING_X, HEAD_SPOT } from './physics.js';
+import { R, HX, HZ, POCKETS, cloneBalls, strike, simulate, canPlace, HEAD_STRING_X, HEAD_SPOT, requiredElevation } from './physics.js';
 import { judge, legalTargets, onTableSet } from './rules.js';
 
 const DEG = Math.PI / 180;
@@ -84,7 +84,7 @@ export function potCandidates(balls, game) {
 function evaluate(balls, game, shot, me, level, random) {
   const sim = cloneBalls(balls);
   const before = onTableSet(sim);
-  strike(sim[0], shot);
+  strike(sim[0], { ...shot, elevation: requiredElevation(sim, sim[0], shot.angle, shot.b ?? 0) });
   const { events } = simulate(sim, { dt: 1 / 600, breakShot: game.breakShot, random });
   const { game: next, result } = judge(game, before, events);
   let score;
@@ -197,7 +197,8 @@ export function planShot(inputBalls, game, levelName = 'medium', seed = 1) {
   // Human error.
   const angle = shot.angle + gauss(random) * level.aim;
   const speed = Math.max(0.3, shot.speed * (1 + gauss(random) * level.pace));
-  return { angle, speed, a: shot.a ?? 0, b: shot.b ?? 0, place, target: shot.target ?? null, pocket: shot.pocket ?? null };
+  const elevation = requiredElevation(balls, cue, angle, shot.b ?? 0);
+  return { angle, speed, a: shot.a ?? 0, b: shot.b ?? 0, elevation, place, target: shot.target ?? null, pocket: shot.pocket ?? null };
 }
 
 // Roll a legal ball softly to a cushion and leave the opponent nothing.

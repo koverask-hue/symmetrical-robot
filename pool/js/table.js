@@ -4,14 +4,14 @@ import { EffectComposer } from '../vendor/addons/postprocessing/EffectComposer.j
 import { RenderPass } from '../vendor/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '../vendor/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '../vendor/addons/postprocessing/OutputPass.js';
-import { R, HX, HZ, POCKETS } from './physics.js';
+import { R, HX, HZ, POCKETS, requiredElevation, MIN_ELEVATION as MIN_EL, MAX_ELEVATION as MAX_EL } from './physics.js';
+import { animateCue, CUES } from './cues.js';
 import { ballTexture } from './textures.js';
-import { buildTable, buildRoom, buildCue, CUSHION_TOP, RAIL_TOP, RAIL_IN, OUT_X, OUT_Z, CUE_LENGTH } from './models.js';
+import { buildTable, buildRoom, buildCue, FLOOR_Y } from './models.js';
 import { CameraRig } from './camera.js';
 
-const DEG = Math.PI / 180;
-export const MIN_ELEVATION = 4 * DEG;
-export const MAX_ELEVATION = 70 * DEG;
+export const MIN_ELEVATION = MIN_EL;
+export const MAX_ELEVATION = MAX_EL;
 
 export class PoolScene {
   constructor(canvas) {
@@ -37,15 +37,18 @@ export class PoolScene {
     const room = buildRoom();
     this.scene.add(room.group);
     this.pendantMeshes = room.pendantMeshes;
+    setTimeout(() => room.fillRack(), 6000); // after the picker thumbnails, which share the skins
     const table = buildTable();
     this.scene.add(table.group);
     this.kitchen = table.kitchen;
     this.#lights();
     this.#environment();
     this.#balls();
-    this.cue = buildCue();
+    this.cue = buildCue(CUES[0]);
     this.cue.visible = false;
     this.scene.add(this.cue);
+    this.time = 0;
+    this.#pathDots();
     this.#guide();
     this.bedPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -R);
     this.rig = new CameraRig(this.camera);
@@ -164,7 +167,7 @@ export class PoolScene {
       if (!b.on) continue; // pocketed balls stay where they fell
       m.visible = true;
       m.userData.inPocket = false;
-      m.position.set(b.x, R, b.z);
+      m.position.set(b.x, R + (b.y || 0), b.z);
       const w = Math.hypot(b.wx, b.wy, b.wz);
       if (w > 1e-4 && dt > 0) {
         axis.set(b.wx / w, b.wy / w, b.wz / w);
@@ -191,6 +194,19 @@ export class PoolScene {
     const q = new THREE.Quaternion();
     for (let i = this.dropping.length - 1; i >= 0; i--) {
       const d = this.dropping[i];
+      if (d.ballistic) {
+        d.v.y -= 9.81 * dt;
+        d.mesh.position.addScaledVector(d.v, dt);
+        const floor = FLOOR_Y + R;
+        if (d.mesh.position.y < floor) {
+          d.mesh.position.y = floor;
+          d.v.y = -d.v.y * 0.45;
+          d.v.x *= 0.7;
+          d.v.z *= 0.7;
+          if (++d.bounces > 4 || Math.abs(d.v.y) < 0.2) this.dropping.splice(i, 1);
+        }
+        continue;
+      }
       d.t += dt / d.dur;
       const k = Math.min(1, d.t);
       d.mesh.position.lerpVectors(d.from, d.to, k);
@@ -201,37 +217,51 @@ export class PoolScene {
     }
   }
 
-  // How high the cue has to be raised so it clears the cushions, rails and other balls, the way a
-  // player jacks up the butt when the cue ball is near a rail or behind another ball.
+  // How high the cue has to be raised to clear cushions, rails and balls (see physics.js).
   cueElevation(balls, cue, angle, b = 0, gap = 0.05) {
-    const dx = Math.cos(angle), dz = Math.sin(angle);
-    const ux = -dx, uz = -dz; // from the tip back towards the butt
-    const tipX = cue.x - dx * R, tipZ = cue.z - dz * R;
-    const tipY = R + b * R;
-    let need = Math.tan(MIN_ELEVATION);
-    const cueR = (s) => 0.0068 + Math.min(1, s / CUE_LENGTH) * 0.0082 + 0.004;
-    const ix = HX + RAIL_IN, iz = HZ + RAIL_IN;
-    for (let s = gap + 0.01; s < gap + CUE_LENGTH; s += 0.015) {
-      const x = tipX + ux * s, z = tipZ + uz * s;
-      let h = 0;
-      if (Math.abs(x) < HX && Math.abs(z) < HZ) h = 0;
-      else if (Math.abs(x) < ix && Math.abs(z) < iz) h = CUSHION_TOP;
-      else if (Math.abs(x) < OUT_X + 0.01 && Math.abs(z) < OUT_Z + 0.01) h = RAIL_TOP + 0.004;
-      else break; // past the table: nothing in the way
-      if (h) need = Math.max(need, (h + cueR(s) - tipY) / s);
+    return requiredElevation(balls, cue, angle, b, gap);
+  }
+
+  setCueDesign(design) {
+    const visible = this.cue.visible;
+    const pos = this.cue.position.clone();
+    const rot = this.cue.rotation.clone();
+    this.scene.remove(this.cue);
+    this.cue = buildCue(design);
+    this.cue.position.copy(pos);
+    this.cue.rotation.copy(rot);
+    this.cue.visible = visible;
+    this.scene.add(this.cue);
+  }
+
+  // Dots tracing where the cue ball will go: used when spin or a raised cue bends its path.
+  #pathDots() {
+    const n = 90;
+    this.path = new THREE.InstancedMesh(new THREE.SphereGeometry(0.0045, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff1c4, transparent: true, opacity: 0.85, depthWrite: false }), n);
+    this.path.count = 0;
+    this.path.frustumCulled = false;
+    this.scene.add(this.path);
+  }
+
+  showPath(points) {
+    const m = new THREE.Matrix4();
+    const n = Math.min(points?.length ?? 0, this.path.instanceMatrix.count);
+    for (let i = 0; i < n; i++) {
+      const [x, y, z] = points[i];
+      m.makeTranslation(x, y + 0.002, z);
+      this.path.setMatrixAt(i, m);
     }
-    for (const o of balls) {
-      if (!o.on || o.id === cue.id) continue;
-      const rx = o.x - tipX, rz = o.z - tipZ;
-      const s = rx * ux + rz * uz;
-      if (s <= 0) continue;
-      const lat = Math.abs(rx * uz - rz * ux);
-      const r = cueR(s);
-      if (lat > R + r) continue;
-      const top = R + Math.sqrt(Math.max(0, (R + r) ** 2 - lat * lat));
-      need = Math.max(need, (top - tipY) / Math.max(0.02, s - R));
-    }
-    return Math.min(MAX_ELEVATION, Math.atan(need));
+    this.path.count = n;
+    this.path.instanceMatrix.needsUpdate = true;
+  }
+
+  // A ball that jumped the rail falls to the floor and stays there until it is spotted.
+  throwOff(id, e) {
+    const m = this.ballMeshes.get(id);
+    m.userData.inPocket = true;
+    const v = new THREE.Vector3(e.vx, e.vy, e.vz);
+    m.position.set(e.x, R + e.y, e.z);
+    this.dropping.push({ mesh: m, ballistic: true, v, t: 0, bounces: 0 });
   }
 
   // Place the cue: tip `gap` metres back from the contact point along the cue's own axis.
@@ -325,6 +355,8 @@ export class PoolScene {
   }
 
   render(dt) {
+    this.time += dt;
+    animateCue(this.cue, this.time);
     this.rig.update(dt);
     // Hide the pendant fixture when the camera rises past it (its light stays on).
     const c = this.camera.position;

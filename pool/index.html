@@ -95,6 +95,25 @@
       </div>
     </section>
 
+    <section class="group" aria-labelledby="angle-label">
+      <div class="group__head">
+        <h2 class="label" id="angle-label">Cue angle</h2>
+        <output class="angle-value" id="cue-angle-value" for="cue-angle">Lowest</output>
+      </div>
+      <input class="slider" id="cue-angle" type="range" min="0" max="80" step="1" value="0" aria-describedby="angle-desc">
+      <div class="chips" id="angle-presets" role="radiogroup" aria-label="Cue angle presets">
+        <button type="button" class="chip" role="radio" data-angle="0">Level</button>
+        <button type="button" class="chip" role="radio" data-angle="42">Jump</button>
+        <button type="button" class="chip" role="radio" data-angle="72">Masse</button>
+      </div>
+      <p class="caption" id="angle-desc">The cue stays as low as the rails and balls allow.</p>
+    </section>
+
+    <section class="group" aria-labelledby="cue-label">
+      <h2 class="label" id="cue-label">Your cue</h2>
+      <div class="cue-list" id="cue-list" role="radiogroup" aria-labelledby="cue-label"></div>
+    </section>
+
     <section class="group" aria-labelledby="guide-label">
       <h2 class="label" id="guide-label">Aim guide</h2>
       <div class="segmented three" role="radiogroup" aria-labelledby="guide-label" id="guide">
@@ -108,7 +127,7 @@
       <button class="btn btn--filled" id="btn-new" type="button"><span class="msr" aria-hidden="true">change_history</span>New rack</button>
     </section>
 
-    <p class="caption help"><strong>Shoot:</strong> drag on the table to aim, or tap a ball to aim straight at it. Pull the power bar down and let go, or hold <kbd>Space</kbd>. Arrow keys fine-tune aim (<kbd>Shift</kbd> for finer).<br><strong>Camera:</strong> right-drag or two fingers to orbit, scroll or pinch to zoom, <kbd>Shift</kbd>+right-drag or middle-drag to pan. Views <kbd>1</kbd>–<kbd>4</kbd>, <kbd>T</kbd> overhead, <kbd>R</kbd> reset.</p>
+    <p class="caption help"><strong>Shoot:</strong> drag on the table to aim, or tap a ball to aim straight at it. Pull the power bar down and let go, or hold <kbd>Space</kbd>. Arrow keys fine-tune aim (<kbd>Shift</kbd> for finer). Raise the cue angle to jump or masse; dots show the curve.<br><strong>Camera:</strong> right-drag or two fingers to orbit, scroll or pinch to zoom, <kbd>Shift</kbd>+right-drag or middle-drag to pan. Views <kbd>1</kbd>–<kbd>4</kbd>, <kbd>T</kbd> overhead, <kbd>R</kbd> reset.</p>
   </aside>
 </div>
 

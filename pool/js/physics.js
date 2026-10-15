@@ -14,6 +14,15 @@ export const FOOT_SPOT = { x: HX / 2, z: 0 };
 export const HEAD_SPOT = { x: -HX / 2, z: 0 };
 
 const G = 9.81;
+
+// Table and cue geometry shared by the physics, the cue-clearance solver and the 3D models.
+export const CUSHION_TOP = 0.046;
+export const RAIL_TOP = 0.052;
+export const RAIL_IN = 0.05; // cushion depth behind the nose line
+export const RAIL_W = 0.15; // wooden rail width
+export const OUT_X = HX + RAIL_IN + RAIL_W;
+export const OUT_Z = HZ + RAIL_IN + RAIL_W;
+export const CUE_LENGTH = 1.47;
 export const PHYS = {
   muSlide: 0.2, // cloth sliding friction
   muRoll: 0.011, // rolling resistance
@@ -23,6 +32,8 @@ export const PHYS = {
   eRail: 0.78,
   muRail: 0.2,
   eJaw: 0.55,
+  eSlate: 0.6, // share of a downward cue stroke the slate gives back as jump
+  eLand: 0.5, // bounce when a jumping ball lands
 };
 export const MAX_SPEED = 9; // m/s, a hard break
 
@@ -69,7 +80,8 @@ function buildSegments() {
 export const SEGMENTS = buildSegments();
 
 export function makeBall(id, x, z) {
-  return { id, x, z, vx: 0, vz: 0, wx: 0, wy: 0, wz: 0, on: true, pocket: -1 };
+  // y is the height of the ball above the cloth (0 when it sits on it), vy its vertical speed.
+  return { id, x, z, y: 0, vx: 0, vy: 0, vz: 0, wx: 0, wy: 0, wz: 0, on: true, pocket: -1 };
 }
 
 export function cloneBalls(balls) {
@@ -115,23 +127,37 @@ export function rack(random = Math.random) {
 }
 
 // Strike the cue ball. angle: aim direction in the x-z plane (radians; 0 = +x). speed in m/s.
-// a, b: tip offset from centre in units of R (a = right english, b = follow; |(a, b)| <= 0.5).
-export function strike(ball, { angle, speed, a = 0, b = 0 }) {
+// a, b: tip offset from the cue's axis in units of R (a = right, b = up; |(a, b)| <= 0.5).
+// elevation: how far the butt is raised (radians). A raised cue drives the ball down into the slate,
+// which throws it back up (a jump shot), and turns side offset into spin about a tilted axis, so
+// cloth friction bends the ball's path (a masse shot). Level, it is an ordinary stroke.
+export function strike(ball, { angle, speed, a = 0, b = 0, elevation = 0 }) {
   const off = Math.hypot(a, b);
   if (off > 0.5) {
     a *= 0.5 / off;
     b *= 0.5 / off;
   }
   speed = Math.min(MAX_SPEED, Math.max(0, speed));
-  const th = angle - a * 0.022; // squirt: side english pushes the cue ball slightly off line
+  const ce = Math.cos(elevation), se = Math.sin(elevation);
+  const th = angle - a * 0.022 * ce; // squirt: side english pushes the cue ball slightly off line
   const dx = Math.cos(th), dz = Math.sin(th);
-  ball.vx = dx * speed;
-  ball.vz = dz * speed;
-  // omega = 5V / (2R^2) * (p x d) with p the tip contact point. b = 0.4 gives natural roll.
+  // Cue frame: c along the stroke, u the cue's "up", s to the right.
+  const c = [dx * ce, -se, dz * ce];
+  const u = [dx * se, ce, dz * se];
+  const sv = [-dz, 0, dx];
+  const k0 = Math.sqrt(Math.max(0, 1 - a * a - b * b));
+  const p = [0, 1, 2].map((i) => a * sv[i] + b * u[i] - k0 * c[i]); // contact point / R
+  // omega = 5V / (2R) * (p x c). Level with b = 0.4 this is exactly natural roll.
   const k = (5 * speed) / (2 * R);
-  ball.wy = k * a;
-  ball.wx = k * b * dz;
-  ball.wz = -k * b * dx;
+  ball.wx = k * (p[1] * c[2] - p[2] * c[1]);
+  ball.wy = k * (p[2] * c[0] - p[0] * c[2]);
+  ball.wz = k * (p[0] * c[1] - p[1] * c[0]);
+  ball.vx = dx * speed * ce;
+  ball.vz = dz * speed * ce;
+  // Strokes within a few degrees of level don't drive the ball into the slate enough to leave it.
+  const vy = PHYS.eSlate * speed * Math.sin(Math.max(0, elevation - (6 * Math.PI) / 180));
+  ball.y = 0;
+  ball.vy = vy > 0.12 ? vy : 0;
 }
 
 export function isMoving(ball) {
@@ -139,7 +165,7 @@ export function isMoving(ball) {
 }
 
 export function anyMoving(balls) {
-  return balls.some((b) => b.on && (b.vx !== 0 || b.vz !== 0));
+  return balls.some((b) => b.on && (b.vx !== 0 || b.vz !== 0 || b.vy !== 0 || b.y > 0));
 }
 
 // Advance the simulation by dt seconds. Collisions, rails and pockets are appended to `events`.
@@ -151,6 +177,31 @@ export function step(balls, dt, events = null, time = 0) {
 
   for (const b of balls) {
     if (!b.on) continue;
+    if (b.y > 0 || b.vy > 0) {
+      // In the air: gravity only; spin carries on untouched.
+      b.vy -= G * dt;
+      b.y += b.vy * dt;
+      b.x += b.vx * dt;
+      b.z += b.vz * dt;
+      if (b.y <= 0) {
+        const vin = -b.vy;
+        b.y = 0;
+        b.vy = vin > 0.35 ? vin * PHYS.eLand : 0;
+        // The cloth grips the ball as it lands, trading slip for spin.
+        const ux = b.vx + R * b.wz, uz = b.vz - R * b.wx;
+        const slip = Math.hypot(ux, uz);
+        if (slip > 1e-4) {
+          const j = Math.min(PHYS.muSlide * (1 + PHYS.eLand) * vin, slip / 3.5);
+          const nx = ux / slip, nz = uz / slip;
+          b.vx -= j * nx;
+          b.vz -= j * nz;
+          b.wx += (5 / (2 * R)) * j * nz;
+          b.wz -= (5 / (2 * R)) * j * nx;
+        }
+        events?.push({ type: 'land', ball: b.id, speed: vin, t: time });
+      }
+      continue;
+    }
     // Cloth friction
     const ux = b.vx + R * b.wz;
     const uz = b.vz - R * b.wx;
@@ -194,34 +245,39 @@ export function step(balls, dt, events = null, time = 0) {
     for (let j = i + 1; j < n; j++) {
       const q = balls[j];
       if (!q.on) continue;
-      const dx = q.x - p.x, dz = q.z - p.z;
-      const d2 = dx * dx + dz * dz;
+      const dx = q.x - p.x, dy = q.y - p.y, dz = q.z - p.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
       if (d2 >= (2 * R + 1e-4) ** 2 || d2 === 0) continue;
       const d = Math.sqrt(d2);
-      const nx = dx / d, nz = dz / d;
-      const v0 = (q.vx - p.vx) * nx + (q.vz - p.vz) * nz;
+      const nx = dx / d, ny = dy / d, nz = dz / d;
+      const v0 = (q.vx - p.vx) * nx + (q.vy - p.vy) * ny + (q.vz - p.vz) * nz;
       if (v0 >= 0 && d >= 2 * R) continue;
-      contacts.push({ p, q, nx, nz, d, v0, target: v0 < -0.01 ? -PHYS.eBall * v0 : 0, J: 0 });
+      contacts.push({ p, q, nx, ny, nz, d, v0, target: v0 < -0.01 ? -PHYS.eBall * v0 : 0, J: 0 });
     }
   }
   if (contacts.length) {
     for (let it = 0; it < (contacts.length > 1 ? 16 : 1); it++) {
       for (const c of contacts) {
-        const vrel = (c.q.vx - c.p.vx) * c.nx + (c.q.vz - c.p.vz) * c.nz;
+        const vrel = (c.q.vx - c.p.vx) * c.nx + (c.q.vy - c.p.vy) * c.ny + (c.q.vz - c.p.vz) * c.nz;
         const nJ = Math.max(0, c.J + (c.target - vrel) / 2);
         const dJ = nJ - c.J;
         c.J = nJ;
         c.p.vx -= dJ * c.nx;
+        c.p.vy -= dJ * c.ny;
         c.p.vz -= dJ * c.nz;
         c.q.vx += dJ * c.nx;
+        c.q.vy += dJ * c.ny;
         c.q.vz += dJ * c.nz;
       }
     }
     for (const c of contacts) {
-      const { p, q, nx, nz } = c;
+      const { p, q, nx, ny, nz } = c;
+      // A ball on the cloth cannot be pushed down into the slate.
+      for (const o of [p, q]) if (o.y <= 0 && o.vy < 0.05) o.vy = 0;
       if (c.J > 0) {
         // Friction at the contact: throw, and spin transfer between the balls.
-        const tx = -nz, tz = nx;
+        const hl = Math.hypot(nx, nz) || 1;
+        const tx = -nz / hl, tz = nx / hl;
         const sp = (p.vx - q.vx) * tx + (p.vz - q.vz) * tz - R * (p.wy + q.wy);
         const jt = Math.min(PHYS.muBall * c.J, Math.abs(sp) / 7) * Math.sign(sp);
         p.vx -= jt * tx;
@@ -236,8 +292,10 @@ export function step(balls, dt, events = null, time = 0) {
       if (c.d < 2 * R) {
         const push = (2 * R - c.d) / 2;
         p.x -= nx * push;
+        p.y = Math.max(0, p.y - ny * push);
         p.z -= nz * push;
         q.x += nx * push;
+        q.y = Math.max(0, q.y + ny * push);
         q.z += nz * push;
       }
     }
@@ -246,7 +304,15 @@ export function step(balls, dt, events = null, time = 0) {
   // Cushions, jaws and pockets
   for (const b of balls) {
     if (!b.on) continue;
+    // Jumped clean over a rail: off the table.
+    if (b.y > CUSHION_TOP * 0.5 && (Math.abs(b.x) > HX + R || Math.abs(b.z) > HZ + R)) {
+      b.on = false;
+      b.pocket = -2;
+      events?.push({ type: 'offtable', ball: b.id, speed: Math.hypot(b.vx, b.vz), t: time, x: b.x, y: b.y, z: b.z, vx: b.vx, vy: b.vy, vz: b.vz });
+      continue;
+    }
     for (const s of SEGMENTS) {
+      if (b.y > CUSHION_TOP) break; // above the cushions
       let t = ((b.x - s.ax) * s.dx + (b.z - s.az) * s.dz) / s.len2;
       t = t < 0 ? 0 : t > 1 ? 1 : t;
       const cx = s.ax + s.dx * t, cz = s.az + s.dz * t;
@@ -277,7 +343,7 @@ export function step(balls, dt, events = null, time = 0) {
       const pk = POCKETS[k];
       const dx = b.x - pk.x, dz = b.z - pk.z;
       const out = Math.abs(b.x) > HX + 0.12 || Math.abs(b.z) > HZ + 0.12;
-      if (dx * dx + dz * dz < pk.r * pk.r || (out && k === nearestPocket(b.x, b.z))) {
+      if ((dx * dx + dz * dz < pk.r * pk.r && b.y < 0.03) || (out && k === nearestPocket(b.x, b.z))) {
         b.on = false;
         b.pocket = k;
         events?.push({ type: 'pocket', ball: b.id, pocket: k, speed: Math.hypot(b.vx, b.vz), t: time });
@@ -355,7 +421,11 @@ export function simulate(balls, { dt = 1 / 800, maxTime = 20, breakShot = false,
   while (shot.time < maxTime && !shot.advance(dt));
   const events = shot.events;
   const t = shot.time;
-  for (const b of balls) b.wy = 0;
+  for (const b of balls) {
+    b.wy = 0;
+    b.y = 0;
+    b.vy = 0;
+  }
   return { events, time: t };
 }
 
@@ -403,4 +473,39 @@ export function castAim(balls, cue, angle, maxDist = 4) {
   const cos = dx * nx + dz * nz;
   const tx = dx - nx * cos, tz = dz - nz * cos;
   return { t: best.t, kind: 'ball', ball: best.ball, x, z, objDir: { x: nx, z: nz }, cueDir: { x: tx, z: tz }, cut: Math.acos(Math.min(1, cos)) };
+}
+
+// How far the cue's butt must be raised to clear the cushions, rails and any ball behind the cue
+// ball, the way a player jacks up near a rail. Pure, so the computer opponent uses it too.
+export const MIN_ELEVATION = (4 * Math.PI) / 180;
+export const MAX_ELEVATION = (85 * Math.PI) / 180;
+export function requiredElevation(balls, cue, angle, b = 0, gap = 0.05) {
+  const dx = Math.cos(angle), dz = Math.sin(angle);
+  const ux = -dx, uz = -dz; // from the tip back towards the butt
+  const tipX = cue.x - dx * R, tipZ = cue.z - dz * R;
+  const tipY = R + b * R;
+  let need = Math.tan(MIN_ELEVATION);
+  const cueR = (s) => 0.0068 + Math.min(1, s / CUE_LENGTH) * 0.0082 + 0.004;
+  const ix = HX + RAIL_IN, iz = HZ + RAIL_IN;
+  for (let s = gap + 0.01; s < gap + CUE_LENGTH; s += 0.015) {
+    const x = tipX + ux * s, z = tipZ + uz * s;
+    let h = 0;
+    if (Math.abs(x) < HX && Math.abs(z) < HZ) h = 0;
+    else if (Math.abs(x) < ix && Math.abs(z) < iz) h = CUSHION_TOP;
+    else if (Math.abs(x) < OUT_X + 0.01 && Math.abs(z) < OUT_Z + 0.01) h = RAIL_TOP + 0.004;
+    else break; // past the table: nothing in the way
+    if (h) need = Math.max(need, (h + cueR(s) - tipY) / s);
+  }
+  for (const o of balls) {
+    if (!o.on || o.id === cue.id) continue;
+    const rx = o.x - tipX, rz = o.z - tipZ;
+    const s = rx * ux + rz * uz;
+    if (s <= 0) continue;
+    const lat = Math.abs(rx * uz - rz * ux);
+    const r = cueR(s);
+    if (lat > R + r) continue;
+    const top = R + Math.sqrt(Math.max(0, (R + r) ** 2 - lat * lat));
+    need = Math.max(need, (top - tipY) / Math.max(0.02, s - R));
+  }
+  return Math.min(MAX_ELEVATION, Math.atan(need));
 }

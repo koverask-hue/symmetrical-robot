@@ -144,3 +144,46 @@ test('AI finds and makes a straight-in pot', () => {
   assert.deepEqual(result.pocketed, [3]);
   assert.equal(result.foul, null);
 });
+
+const DEG = Math.PI / 180;
+
+test('a jump shot clears a blocking ball and hits the one behind it', () => {
+  const run = (elevation) => {
+    const cue = makeBall(0, -0.6, 0);
+    const blocker = makeBall(5, -0.25, 0);
+    const target = makeBall(1, 0.35, 0);
+    strike(cue, { angle: 0, speed: 4, elevation });
+    const events = [];
+    for (let i = 0; i < 4000 && !events.some((e) => e.type === 'ball'); i++) step([cue, blocker, target], 1 / 1000, events);
+    const hit = events.find((e) => e.type === 'ball');
+    return hit.a === 0 ? hit.b : hit.a;
+  };
+  assert.equal(run(0), 5, 'a level cue hits the blocker');
+  assert.equal(run(45 * DEG), 1, 'a 45 degree jump clears it');
+});
+
+test('a masse curves towards the side the cue strikes, and a level cue barely bends', () => {
+  const endZ = (a, elevation) => {
+    const cue = makeBall(0, -0.8, 0);
+    strike(cue, { angle: 0, speed: 1.6, a, elevation });
+    for (let i = 0; i < 1500; i++) step([cue], 1 / 1000);
+    return cue.z;
+  };
+  assert.ok(Math.abs(endZ(0.4, 0)) < 0.03, 'level english hardly bends the path');
+  const right = endZ(0.4, 72 * DEG), left = endZ(-0.4, 72 * DEG);
+  assert.ok(right > 0.15 && left < -0.15, `masse bends ${right} / ${left}`);
+  assert.ok(Math.abs(right + left) < 1e-6, 'and symmetrically');
+});
+
+test('a ball that jumps the rail is a foul and is spotted', () => {
+  const cue = makeBall(0, 0.9, 0);
+  const obj = makeBall(3, 1.05, 0);
+  strike(cue, { angle: 0, speed: 8.5, elevation: 50 * DEG });
+  const { events } = simulate([cue, obj]);
+  const off = events.filter((e) => e.type === 'offtable').map((e) => e.ball);
+  assert.ok(off.length > 0, 'something left the table');
+  const game = { ...newGame(0), breakShot: false, ballInHand: null, groups: ['solids', 'stripes'] };
+  const { result } = judge(game, new Set([0, 3, 8, 11]), events);
+  assert.ok(result.foul && /off the table/.test(result.foul), result.foul);
+  if (off.includes(3)) assert.deepEqual(result.respot, [3]);
+});

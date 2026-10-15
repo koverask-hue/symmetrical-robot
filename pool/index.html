@@ -18,7 +18,6 @@
     <h1 class="wordmark">Eight Ball</h1>
     <div class="app-bar__actions">
       <button class="icon-btn" id="btn-sound" type="button" aria-label="Mute sound" title="Mute sound"><span class="msr" aria-hidden="true">volume_up</span></button>
-      <button class="icon-btn" id="btn-view" type="button" aria-label="Top view" title="Top view (T)" aria-pressed="false"><span class="msr" aria-hidden="true">grid_view</span></button>
     </div>
   </header>
 
@@ -30,6 +29,14 @@
       <span class="power__value" id="power-value">0%</span>
       <div class="power__track"><div class="power__fill" id="power-fill"></div><div class="power__grip" id="power-grip"></div></div>
       <span class="power__label">Pull</span>
+    </div>
+    <div class="views" id="views" role="radiogroup" aria-label="Camera view">
+      <button type="button" role="radio" data-view="aim" aria-checked="true" aria-label="Behind the cue" title="Behind the cue (1)"><span class="msr" aria-hidden="true">videocam</span></button>
+      <button type="button" role="radio" data-view="top" aria-checked="false" aria-label="Overhead" title="Overhead (2 or T)"><span class="msr" aria-hidden="true">grid_view</span></button>
+      <button type="button" role="radio" data-view="broadcast" aria-checked="false" aria-label="Broadcast angle" title="Broadcast angle (3)"><span class="msr" aria-hidden="true">live_tv</span></button>
+      <button type="button" role="radio" data-view="free" aria-checked="false" aria-label="Free camera" title="Free camera (4)"><span class="msr" aria-hidden="true">3d_rotation</span></button>
+      <span class="views__sep" aria-hidden="true"></span>
+      <button type="button" id="view-reset" aria-label="Reset this view" title="Reset this view (R)"><span class="msr" aria-hidden="true">center_focus_weak</span></button>
     </div>
     <div class="loading" id="loading">
       <div class="progress" aria-hidden="true"><span></span></div>
@@ -81,7 +88,10 @@
           <line x1="0" y1="-54" x2="0" y2="54" class="spin__axis"></line>
           <circle r="8" class="spin__tip" id="spin-tip"></circle>
         </svg>
+        <div class="spin__text">
         <p class="caption" id="spin-desc">Centre ball. Low draws the cue ball back, high follows through, left and right curve its path off cushions.</p>
+        <p class="caption elevation" id="elevation">Cue nearly level (4°).</p>
+        </div>
       </div>
     </section>
 
@@ -98,7 +108,7 @@
       <button class="btn btn--filled" id="btn-new" type="button"><span class="msr" aria-hidden="true">change_history</span>New rack</button>
     </section>
 
-    <p class="caption help">Drag on the table to aim, or tap a ball to aim straight at it. Pull the power bar down and let go to shoot, or hold <kbd>Space</kbd>. Arrow keys fine-tune aim (<kbd>Shift</kbd> for finer). Right-drag or two fingers to look around; <kbd>T</kbd> or the grid button switches to a top view.</p>
+    <p class="caption help"><strong>Shoot:</strong> drag on the table to aim, or tap a ball to aim straight at it. Pull the power bar down and let go, or hold <kbd>Space</kbd>. Arrow keys fine-tune aim (<kbd>Shift</kbd> for finer).<br><strong>Camera:</strong> right-drag or two fingers to orbit, scroll or pinch to zoom, <kbd>Shift</kbd>+right-drag or middle-drag to pan. Views <kbd>1</kbd>–<kbd>4</kbd>, <kbd>T</kbd> overhead, <kbd>R</kbd> reset.</p>
   </aside>
 </div>
 

@@ -2,7 +2,8 @@
 import { R, HX, HZ, rack, strike, Shot, canPlace, castAim, HEAD_SPOT, FOOT_SPOT, MAX_SPEED, cloneBalls } from './physics.js';
 import { newGame, judge, onTableSet, groupOf, SOLIDS, STRIPES, legalTargets } from './rules.js';
 import { LEVELS, planShot } from './ai.js';
-import { PoolScene } from './table.js';
+import { PoolScene, MIN_ELEVATION } from './table.js';
+import { VIEWS } from './camera.js';
 import { Sound } from './audio.js';
 import { ballColor } from './textures.js';
 
@@ -39,7 +40,8 @@ const state = {
   level: LEVELS[store.get('level', 'medium')] ? store.get('level', 'medium') : 'medium',
   guide: ['full', 'short', 'off'].includes(store.get('guide', 'full')) ? store.get('guide', 'full') : 'full',
   sound: store.get('sound', true) !== false,
-  top: false,
+  view: VIEWS.includes(store.get('view', 'aim')) ? store.get('view', 'aim') : 'aim',
+  elevation: MIN_ELEVATION,
   shot: null,
   before: null,
   rackId: 0,
@@ -112,8 +114,7 @@ async function newRack() {
   state.power = 0;
   state.spin = { a: 0, b: 0 };
   syncSpin();
-  scene.dropping.length = 0;
-  for (const m of scene.ballMeshes.values()) m.userData.pocketed = false;
+  scene.resetPockets();
   $('result-dialog').open && $('result-dialog').close();
   startTurn();
 }
@@ -124,8 +125,7 @@ function startTurn() {
     const c = cue();
     const spot = g.ballInHand === 'kitchen' ? freeSpot(HEAD_SPOT.x - 0.08, c.on ? Math.max(-HZ + R, Math.min(HZ - R, c.z)) : 0, true) : freeSpot(c.on ? c.x : 0, c.on ? c.z : 0, false);
     Object.assign(c, { on: true, x: spot.x, z: spot.z, vx: 0, vz: 0, wx: 0, wy: 0, wz: 0, pocket: -1 });
-    const m = scene.ballMeshes.get(0);
-    m.userData.pocketed = false;
+    scene.ballMeshes.get(0).userData.inPocket = false;
   }
   if (g.breakShot) {
     const apex = state.balls.find((b) => b.id === 1);
@@ -141,7 +141,6 @@ function startTurn() {
   }
   state.power = 0;
   state.phase = humanTurn() ? 'aim' : 'ai';
-  if (!state.top) scene.rig.aimAt(cue(), state.aim);
   updateUI();
   if (!humanTurn()) computerTurn();
 }
@@ -157,7 +156,7 @@ async function shoot(power) {
   scene.hideGuide();
   scene.showPlacement(null);
   const pullFrom = 0.03 + power * 0.22;
-  await tween(0.07 + 0.05 * (1 - power), (t) => scene.setCue(cue(), state.aim, pullFrom * (1 - t) + 0.001, state.spin.a, state.spin.b), (t) => t * t);
+  await tween(0.07 + 0.05 * (1 - power), (t) => scene.setCue(cue(), state.aim, pullFrom * (1 - t) + 0.001, state.spin.a, state.spin.b, state.elevation), (t) => t * t);
   sound.play('cue', speed);
   state.before = onTableSet(state.balls);
   strike(cue(), { angle: state.aim, speed, a: state.spin.a, b: state.spin.b });
@@ -165,8 +164,7 @@ async function shoot(power) {
   state.processed = 0;
   state.phase = 'rolling';
   state.power = 0;
-  tween(0.25, (t) => scene.setCue(cue(), state.aim, 0.001 + t * 0.12, state.spin.a, state.spin.b)).then(() => (scene.cue.visible = false));
-  if (!state.top) scene.rig.overview(state.aim);
+  tween(0.25, (t) => scene.setCue(cue(), state.aim, 0.001 + t * 0.12, state.spin.a, state.spin.b, state.elevation)).then(() => (scene.cue.visible = false));
   updateUI();
 }
 
@@ -195,7 +193,7 @@ function endShot() {
     let x = FOOT_SPOT.x;
     while (!canPlace(state.balls.filter((b) => b.id !== 8), x, 0) && x < HX - R) x += 0.01;
     Object.assign(eight, { on: true, x, z: 0, vx: 0, vz: 0, wx: 0, wy: 0, wz: 0, pocket: -1 });
-    scene.ballMeshes.get(8).userData.pocketed = false;
+    scene.ballMeshes.get(8).userData.inPocket = false;
     snackbar('The 8 went down on the break, so it is spotted.');
   }
   if (result.assigned) {
@@ -279,10 +277,7 @@ async function computerTurn() {
   da = Math.atan2(Math.sin(da), Math.cos(da));
   state.spin = { a: p.a, b: p.b };
   syncSpin();
-  await tween(0.7, (t) => {
-    state.aim = a0 + da * t;
-    if (!state.top) scene.rig.aimAt(c, state.aim);
-  }, smooth);
+  await tween(0.7, (t) => (state.aim = a0 + da * t), smooth);
   const target = Math.min(1, Math.pow(Math.max(0, (p.speed - 0.25) / (MAX_SPEED - 0.6)), 1 / 1.35));
   await tween(0.6, (t) => (state.power = target * smooth(t)));
   await new Promise((r) => setTimeout(r, 150));
@@ -310,6 +305,8 @@ canvas.addEventListener('pointerdown', (e) => {
   if (canAim() && state.game.ballInHand && hit.x !== null && Math.hypot(hit.x - c.x, hit.z - c.z) < R * 3) {
     gesture = { kind: 'place' };
     canvas.classList.add('is-placing');
+  } else if (e.button === 1 || (e.button === 2 && e.shiftKey)) {
+    gesture = { kind: 'pan' };
   } else if (e.button === 2 || !canAim()) {
     gesture = { kind: 'orbit', x: e.clientX, y: e.clientY };
   } else {
@@ -327,8 +324,8 @@ canvas.addEventListener('pointermove', (e) => {
     prev.x = e.clientX;
     prev.y = e.clientY;
     const after = Math.hypot(a.x - b.x, a.y - b.y);
-    scene.rig.userDist = Math.min(2.2, Math.max(0.4, scene.rig.userDist * (before / Math.max(1, after))));
-    scene.rig.userPitch = Math.min(0.9, Math.max(-0.25, scene.rig.userPitch - dy * 0.002));
+    scene.rig.zoom(before / Math.max(1, after));
+    scene.rig.orbit(dx * 0.5, dy * 0.5);
     return;
   }
   prev.x = e.clientX;
@@ -346,15 +343,17 @@ canvas.addEventListener('pointermove', (e) => {
     }
   } else if (gesture.kind === 'aim') {
     gesture.moved += Math.abs(dx) + Math.abs(dy);
-    if (state.top) {
+    if (scene.rig.mode === 'top') {
       const hit = scene.pick(e.clientX, e.clientY);
       if (hit.x !== null) aimAtPoint(hit.x, hit.z);
     } else {
       state.aim += dx * (e.shiftKey ? 0.0004 : 0.0028);
     }
   } else if (gesture.kind === 'orbit') {
-    scene.rig.userYaw += dx * 0.006;
-    scene.rig.userPitch = Math.min(0.9, Math.max(-0.25, scene.rig.userPitch - dy * 0.003));
+    scene.rig.orbit(dx, dy);
+  } else if (gesture.kind === 'pan') {
+    scene.rig.pan(dx, dy);
+    syncViewButtons();
   }
 });
 
@@ -375,7 +374,7 @@ canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  scene.rig.userDist = Math.min(2.2, Math.max(0.4, scene.rig.userDist * (1 + Math.sign(e.deltaY) * 0.08)));
+  scene.rig.zoom(Math.exp(Math.sign(e.deltaY) * Math.min(3, Math.abs(e.deltaY) / 40) * 0.06));
 }, { passive: false });
 
 // Power bar: pull down, let go to shoot.
@@ -433,8 +432,12 @@ addEventListener('keydown', (e) => {
   } else if (e.key === 'Escape' && state.charging) {
     state.charging = null;
     state.power = 0;
-  } else if ((e.key === 't' || e.key === 'T') && !e.target.closest?.('input')) {
-    toggleTop();
+  } else if (e.key === 't' || e.key === 'T') {
+    setView(scene.rig.mode === 'top' ? 'aim' : 'top');
+  } else if (['1', '2', '3', '4'].includes(e.key)) {
+    setView(VIEWS[Number(e.key) - 1]);
+  } else if (e.key === 'r' || e.key === 'R') {
+    scene.rig.reset();
   }
 });
 addEventListener('keyup', (e) => {
@@ -452,18 +455,15 @@ addEventListener('blur', () => {
   }
 });
 
-function toggleTop() {
-  state.top = !state.top;
-  scene.rig.userYaw = 0;
-  scene.rig.userPitch = 0;
-  scene.rig.userDist = 1;
-  if (state.top) scene.rig.top();
-  else if (state.phase === 'rolling') scene.rig.overview(state.aim);
-  else scene.rig.aimAt(cue(), state.aim);
-  const b = $('btn-view');
-  b.setAttribute('aria-pressed', String(state.top));
-  b.setAttribute('aria-label', state.top ? 'Player view' : 'Top view');
-  b.title = state.top ? 'Player view (T)' : 'Top view (T)';
+function setView(view) {
+  state.view = view;
+  store.set('view', view);
+  scene.rig.setMode(view);
+  syncViewButtons();
+}
+
+function syncViewButtons() {
+  for (const b of $('views').querySelectorAll('button[data-view]')) b.setAttribute('aria-checked', String(b.dataset.view === scene.rig.mode));
 }
 
 // Spin pad
@@ -515,6 +515,14 @@ $('spin-reset').addEventListener('click', () => {
   syncSpin();
 });
 
+let shownElevation = -1;
+function syncElevation() {
+  const deg = Math.round((state.elevation * 180) / Math.PI);
+  if (deg === shownElevation) return;
+  shownElevation = deg;
+  $('elevation').textContent = deg <= 5 ? `Cue nearly level (${deg}°).` : `Cue raised to ${deg}° to clear ${deg > 25 ? 'the ball or rail in the way' : 'the rail'}.`;
+}
+
 function syncSpin() {
   const { a, b } = state.spin;
   const tip = $('spin-tip');
@@ -564,7 +572,12 @@ $('guide').addEventListener('click', (e) => {
   updateUI();
 });
 $('btn-new').addEventListener('click', newRack);
-$('btn-view').addEventListener('click', toggleTop);
+$('views').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.view) setView(b.dataset.view);
+  else if (b.id === 'view-reset') scene.rig.reset();
+});
 $('btn-sound').addEventListener('click', () => {
   state.sound = !state.sound;
   store.set('sound', state.sound);
@@ -666,6 +679,7 @@ function frame(now) {
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
   last = Math.max(last, now);
   advance(dt);
+  scene.rig.frame({ phase: state.phase, cue: cue(), aim: state.aim, balls: state.balls });
   scene.render(dt);
   if (first) {
     first = false;
@@ -710,8 +724,11 @@ function advance(dt) {
 
   const aiming = (state.phase === 'aim' && humanTurn()) || state.phase === 'ai';
   if (aiming && !state.game.over) {
-    if (!state.top) scene.rig.aimAt(cue(), state.aim);
-    scene.setCue(cue(), state.aim, 0.03 + state.power * 0.22, state.spin.a, state.spin.b);
+    const gap = 0.03 + state.power * 0.22;
+    const want = scene.cueElevation(state.balls, cue(), state.aim, state.spin.b, gap);
+    state.elevation += (want - state.elevation) * Math.min(1, dt * 12);
+    scene.setCue(cue(), state.aim, gap, state.spin.a, state.spin.b, state.elevation);
+    syncElevation();
     if (state.phase === 'aim') scene.showGuide(cue(), castAim(state.balls, cue(), state.aim), state.guide);
     else scene.hideGuide();
     scene.showPlacement(state.phase === 'aim' && state.game.ballInHand ? cue() : null, true);
@@ -731,10 +748,11 @@ new ResizeObserver(() => scene.resize()).observe(canvas);
 
 renderLevels();
 syncSoundButton();
+setView(state.view);
 syncSpin();
 document.addEventListener('pointerdown', () => sound.unlock(), { once: true });
 newRack();
 requestAnimationFrame(frame);
 
 // Handle for automated checks.
-window.eightBall = { state, scene, shoot, advance, startTurn, newRack, groupOf };
+window.eightBall = { state, scene, shoot, advance, startTurn, newRack, groupOf, setView };

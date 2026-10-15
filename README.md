@@ -140,7 +140,13 @@ Finishers are matched to the attacker: bishops and queens favour spells, rooks a
 
 3D eight-ball pool, in `pool/`. Open it with `npm start`, then `http://localhost:5173/pool/`.
 
-**Playing.** Drag on the table to aim, or tap a ball to aim straight at it. Pull the power bar down and let go to shoot (or hold <kbd>Space</kbd>). Arrow keys fine-tune the aim, <kbd>Shift</kbd> for finer. Set spin on the cue-ball pad. Right-drag or two fingers to look around; <kbd>T</kbd> switches to a top view. With ball in hand, drag the cue ball where you want it.
+**Playing.** Drag on the table to aim, or tap a ball to aim straight at it. Pull the power bar down and let go to shoot (or hold <kbd>Space</kbd>). Arrow keys fine-tune the aim, <kbd>Shift</kbd> for finer. Set spin on the cue-ball pad. With ball in hand, drag the cue ball where you want it.
+
+**Camera.** Four views from the buttons on the table (or keys <kbd>1</kbd>–<kbd>4</kbd>): behind the cue (follows the balls once they roll), overhead (<kbd>T</kbd>), the broadcast angle from the long side, and a free camera. Right-drag or two fingers to orbit, scroll or pinch to zoom, <kbd>Shift</kbd>+right-drag or middle-drag to pan; each view remembers its adjustments until you reset it (<kbd>R</kbd>). The camera never dips into the table or out of the room.
+
+**The cue.** It never passes through the table: when the cue ball is near a rail or behind another ball, the butt is raised automatically just enough to clear it, as a player would, and the panel shows the angle. This is visual only; the physics does not model jump or masse shots.
+
+**The room.** A sunlit loft: steel-framed windows over a city skyline, whitewashed brick, oak floor and a rug, a three-dome pendant, bar stools, a cue rack and plants. The table has a swept cushion profile, a rounded lacquered mahogany rail cut around the pockets, chrome pocket irons, leather pocket bags where potted balls stay visible, pearl sights, turned legs and a brass plate.
 
 **Physics.** Written for pool rather than borrowed from a general engine (`pool/js/physics.js`). Balls slide until cloth friction makes them roll, which is what makes stun, draw and follow work: spin survives a collision, velocity does not. Ball-on-ball and cushion contacts include friction, so cut shots throw slightly and english changes how the cue ball leaves a cushion; side english also pushes the cue ball slightly off line (squirt). Contacts in a cluster are solved together, so a rack takes the blow as a whole. One deliberate tweak: when the cue ball first meets the rack on the break, each racked ball gets a kick away from the rack's centre, standing in for the elasticity a rigid-body model lacks. Without it almost nothing dropped on the break; with it breaks average about 1.8 balls, close to real play.
 

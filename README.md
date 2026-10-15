@@ -133,3 +133,24 @@ Above 3190 the number is a label for "more thinking time", not a measured rating
 Finishers are matched to the attacker: bishops and queens favour spells, rooks and knights favour brute force, and the same finisher never plays twice in a row.
 
 **Licences.** Stockfish is GPLv3 (`chess/vendor/stockfish/COPYING.txt`) and runs as a separate program in a Web Worker; chess.js is BSD-2-Clause; three.js is MIT.
+
+---
+
+# Eight Ball
+
+3D eight-ball pool, in `pool/`. Open it with `npm start`, then `http://localhost:5173/pool/`.
+
+**Playing.** Drag on the table to aim, or tap a ball to aim straight at it. Pull the power bar down and let go to shoot (or hold <kbd>Space</kbd>). Arrow keys fine-tune the aim, <kbd>Shift</kbd> for finer. Set spin on the cue-ball pad. Right-drag or two fingers to look around; <kbd>T</kbd> switches to a top view. With ball in hand, drag the cue ball where you want it.
+
+**Physics.** Written for pool rather than borrowed from a general engine (`pool/js/physics.js`). Balls slide until cloth friction makes them roll, which is what makes stun, draw and follow work: spin survives a collision, velocity does not. Ball-on-ball and cushion contacts include friction, so cut shots throw slightly and english changes how the cue ball leaves a cushion; side english also pushes the cue ball slightly off line (squirt). Contacts in a cluster are solved together, so a rack takes the blow as a whole. One deliberate tweak: when the cue ball first meets the rack on the break, each racked ball gets a kick away from the rack's centre, standing in for the elasticity a rigid-body model lacks. Without it almost nothing dropped on the break; with it breaks average about 1.8 balls, close to real play.
+
+**Rules.** Eight-ball without called pockets: break from behind the head string, open table until someone legally pots a ball, then solids or stripes, then the 8. Fouls (scratch, no ball hit, wrong ball first, no rail after contact) give ball in hand anywhere; a scratch on the break gives ball in hand behind the line. The 8 on the break is spotted. Potting the 8 early or on a foul loses.
+
+**Computer opponent.** Finds pots with ghost-ball geometry, tests the best ones in the real physics with different spin and pace, scores the results with the real rules (including where the cue ball ends up, from Hard upward), plays safe when nothing is on (Hard and Pro), and then adds aim and pace error for its level. In self-play Pro beat Easy 11 of 12 games and Hard beat Medium 10 of 12.
+
+| Level | Aim error | What it considers |
+| --- | --- | --- |
+| Easy | about 1.7° | the easiest pot, no simulation |
+| Medium | about 0.65° | six pots, simulated |
+| Hard | about 0.2° | ten pots, cue-ball position, safeties |
+| Pro | about 0.07° | fourteen pots, cue-ball position, safeties |

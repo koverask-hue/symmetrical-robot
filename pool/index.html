@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Eight Ball</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="3D eight-ball pool with real spin physics and a computer opponent.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Roboto+Flex:opsz,wght@8..144,300..700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..24,400,0..1,0&display=block">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="app">
+  <header class="app-bar">
+    <h1 class="wordmark">Eight Ball</h1>
+    <div class="app-bar__actions">
+      <button class="icon-btn" id="btn-sound" type="button" aria-label="Mute sound" title="Mute sound"><span class="msr" aria-hidden="true">volume_up</span></button>
+      <button class="icon-btn" id="btn-view" type="button" aria-label="Top view" title="Top view (T)" aria-pressed="false"><span class="msr" aria-hidden="true">grid_view</span></button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <canvas id="table" aria-label="Pool table. Drag to aim, tap a ball to aim at it, pull the power bar down and release to shoot."></canvas>
+    <div class="turn-pill" id="turn-pill" aria-live="polite"><span class="dot" id="turn-dot"></span><span id="turn-text">Your break</span></div>
+    <div class="hint" id="hint" hidden></div>
+    <div class="power" id="power" role="slider" tabindex="0" aria-label="Shot power: drag down and release to shoot" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <span class="power__value" id="power-value">0%</span>
+      <div class="power__track"><div class="power__fill" id="power-fill"></div><div class="power__grip" id="power-grip"></div></div>
+      <span class="power__label">Pull</span>
+    </div>
+    <div class="loading" id="loading">
+      <div class="progress" aria-hidden="true"><span></span></div>
+      <p>Racking the balls…</p>
+    </div>
+  </main>
+
+  <aside class="sheet" aria-label="Game controls">
+    <section class="card score" aria-live="polite">
+      <div class="player" id="player-0">
+        <span class="player__mark" aria-hidden="true"></span>
+        <div class="player__text">
+          <p class="player__name" id="name-0">You</p>
+          <p class="player__group" id="group-0">Open table</p>
+        </div>
+        <div class="rack" id="rack-0"></div>
+      </div>
+      <div class="player" id="player-1">
+        <span class="player__mark" aria-hidden="true"></span>
+        <div class="player__text">
+          <p class="player__name" id="name-1">Computer</p>
+          <p class="player__group" id="group-1">Open table</p>
+        </div>
+        <div class="rack" id="rack-1"></div>
+      </div>
+      <p class="status" id="status">Your break. Drag the cue ball anywhere behind the line, then shoot.</p>
+      <div class="progress" id="thinking" hidden><span></span></div>
+    </section>
+
+    <section class="group" aria-labelledby="opp-label">
+      <h2 class="label" id="opp-label">Opponent</h2>
+      <div class="segmented two" role="radiogroup" aria-labelledby="opp-label" id="opponent">
+        <button type="button" role="radio" data-opp="computer" aria-checked="true"><span class="msr check" aria-hidden="true">check</span>Computer</button>
+        <button type="button" role="radio" data-opp="two" aria-checked="false"><span class="msr check" aria-hidden="true">check</span>Two players</button>
+      </div>
+      <div class="chips" id="levels" role="radiogroup" aria-label="Computer skill"></div>
+    </section>
+
+    <section class="group spin-group" aria-labelledby="spin-label">
+      <div class="group__head">
+        <h2 class="label" id="spin-label">Spin</h2>
+        <button class="btn btn--text small" id="spin-reset" type="button">Centre</button>
+      </div>
+      <div class="spin">
+        <svg id="spin-pad" viewBox="-60 -60 120 120" role="slider" tabindex="0" aria-label="Cue tip position: drag to set spin" aria-valuetext="Centre ball">
+          <circle r="54" class="spin__ball"></circle>
+          <circle r="27" class="spin__ring"></circle>
+          <line x1="-54" y1="0" x2="54" y2="0" class="spin__axis"></line>
+          <line x1="0" y1="-54" x2="0" y2="54" class="spin__axis"></line>
+          <circle r="8" class="spin__tip" id="spin-tip"></circle>
+        </svg>
+        <p class="caption" id="spin-desc">Centre ball. Low draws the cue ball back, high follows through, left and right curve its path off cushions.</p>
+      </div>
+    </section>
+
+    <section class="group" aria-labelledby="guide-label">
+      <h2 class="label" id="guide-label">Aim guide</h2>
+      <div class="segmented three" role="radiogroup" aria-labelledby="guide-label" id="guide">
+        <button type="button" role="radio" data-guide="full" aria-checked="true"><span class="msr check" aria-hidden="true">check</span>Full</button>
+        <button type="button" role="radio" data-guide="short" aria-checked="false"><span class="msr check" aria-hidden="true">check</span>Short</button>
+        <button type="button" role="radio" data-guide="off" aria-checked="false"><span class="msr check" aria-hidden="true">check</span>Off</button>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button class="btn btn--filled" id="btn-new" type="button"><span class="msr" aria-hidden="true">change_history</span>New rack</button>
+    </section>
+
+    <p class="caption help">Drag on the table to aim, or tap a ball to aim straight at it. Pull the power bar down and let go to shoot, or hold <kbd>Space</kbd>. Arrow keys fine-tune aim (<kbd>Shift</kbd> for finer). Right-drag or two fingers to look around; <kbd>T</kbd> or the grid button switches to a top view.</p>
+  </aside>
+</div>
+
+<dialog class="dialog" id="result-dialog" aria-labelledby="result-title">
+  <h2 class="dialog__title" id="result-title">You win</h2>
+  <p class="dialog__body" id="result-body">Pocketed the 8.</p>
+  <div class="dialog__actions">
+    <button class="btn btn--text" type="button" id="result-close">View table</button>
+    <button class="btn btn--filled" type="button" id="result-new">Rack again</button>
+  </div>
+</dialog>
+
+<div class="snackbar" id="snackbar" role="status" hidden></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

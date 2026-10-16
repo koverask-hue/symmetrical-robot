@@ -4,12 +4,12 @@ import { imageBlobUrl } from '../platform';
 
 export type RGB = [number, number, number]; // 0..1
 
-// Moonbow's own palette, used before anything plays: moonlight violet, aurora teal, rose, deep indigo.
+// Before anything plays: neutral graphite light.
 export const FALLBACK: RGB[] = [
-  [0.42, 0.36, 0.86],
-  [0.2, 0.62, 0.66],
-  [0.78, 0.38, 0.62],
-  [0.1, 0.08, 0.22],
+  [0.36, 0.36, 0.4],
+  [0.28, 0.28, 0.32],
+  [0.22, 0.22, 0.26],
+  [0.1, 0.1, 0.12],
 ];
 
 /** A lighter, saturated version for UI accents (text, glows) from a palette colour. */

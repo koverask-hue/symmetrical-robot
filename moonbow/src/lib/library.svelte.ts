@@ -1,7 +1,7 @@
 // Everything the user owns lives locally: likes, history, playlists, settings.
 // No account, no server.
 
-import type { Track } from './sources/types';
+import type { CollectionRef, Track } from './sources/types';
 import { taste } from './taste/store.svelte';
 import { load, save } from './util/persist';
 
@@ -14,15 +14,22 @@ export interface LocalPlaylist {
 
 export type VisualsMode = 'reactive' | 'calm' | 'off';
 
+export type Accent = 'volt' | 'ice' | 'ember' | 'orchid' | 'silver';
+
 export interface Settings {
   crossfade: number;
+  normalize: boolean;
+  accent: Accent;
+  sidebar: boolean;
   visuals: VisualsMode;
   romanize: boolean;
   autoplay: boolean;
   lyricsSize: number;
 }
 
-const DEFAULT_SETTINGS: Settings = { crossfade: 0, visuals: 'reactive', romanize: false, autoplay: true, lyricsSize: 1 };
+const DEFAULT_SETTINGS: Settings = {
+  crossfade: 0, normalize: true, accent: 'volt', sidebar: true, visuals: 'reactive', romanize: false, autoplay: true, lyricsSize: 1,
+};
 const HISTORY_MAX = 200;
 
 class Library {
@@ -33,7 +40,26 @@ class Library {
   /** Per-track lyric offset in seconds, for tracks whose synced lyrics drift. */
   offsets = $state<Record<string, number>>(load('offsets', {}));
 
+  /** Saved albums / YouTube playlists and followed artists. */
+  saved = $state<CollectionRef[]>(load('saved', []));
+  following = $state<CollectionRef[]>(load('following', []));
+
   #likedIds = $derived(new Set(this.liked.map((t) => t.id)));
+
+  isSaved = (id: string) => this.saved.some((x) => x.id === id);
+  isFollowing = (id: string) => this.following.some((x) => x.id === id);
+
+  toggleSave(ref: CollectionRef) {
+    this.saved = this.isSaved(ref.id) ? this.saved.filter((x) => x.id !== ref.id) : [{ ...ref }, ...this.saved];
+    save('saved', this.saved);
+  }
+
+  toggleFollow(ref: CollectionRef) {
+    const on = !this.isFollowing(ref.id);
+    this.following = on ? [{ ...ref }, ...this.following] : this.following.filter((x) => x.id !== ref.id);
+    save('following', this.following);
+    taste.follow(ref, on);
+  }
 
   isLiked = (id: string) => this.#likedIds.has(id);
 

@@ -1,12 +1,14 @@
 // A tiny history-stack router. Pages are values, not URLs, so there's nothing to parse.
 
+export type LibraryTab = 'playlists' | 'liked' | 'albums' | 'artists' | 'history';
+
 export type Route =
   | { name: 'home' }
   | { name: 'search'; q: string }
   | { name: 'album'; id: string }
   | { name: 'playlist'; id: string }
   | { name: 'artist'; id: string }
-  | { name: 'library' }
+  | { name: 'library'; tab?: LibraryTab }
   | { name: 'local'; id: string }
   | { name: 'mix'; id: string }
   | { name: 'taste' };

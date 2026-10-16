@@ -9,7 +9,7 @@ import {
   artistKey, contextOf, emptyState, recordAddedToPlaylist, recordFeedback, recordLike, recordListen, seedArtist, setMuted,
   type Listen, type Outcome, type TasteState,
 } from './model';
-import { backInRotation, flow, freshFinds, onRepeat, rightNow, topSeeds, worlds, type Ctx, type Mix } from './recommend';
+import { backInRotation, flow, freshFinds, onRepeat, rightNow, topSeeds, worlds, type Ctx, type FlowSession, type Mix } from './recommend';
 
 const EXPAND_TTL = 7 * 86_400_000;
 const REBUILD_EVERY = 20 * 60_000;
@@ -37,6 +37,7 @@ class Taste {
   building = $state(false);
 
   #saveTimer: ReturnType<typeof setTimeout> | undefined;
+  #graphDirty = false;
   #expanding = new Map<string, Promise<void>>();
   #builtAt = 0;
   #builtVersion = -1;
@@ -45,9 +46,11 @@ class Taste {
 
   async load() {
     try {
-      const [s, g] = await Promise.all([get<TasteState>('taste'), get<SongGraph>('graph')]);
+      const [s, g, m] = await Promise.all([get<TasteState>('taste'), get<SongGraph>('graph'), get<Mixes>('mixes')]);
       if (s?.version === 1) this.state = { ...emptyState(), ...s };
       if (g?.edges) this.graph = g;
+      // Last session's mixes show instantly; fresh ones replace them in the background.
+      if (m) this.mixes = { ...NO_MIXES, ...m };
     } catch {
       // Storage unavailable (private mode): run in memory.
     }
@@ -55,14 +58,19 @@ class Taste {
     this.version++;
   }
 
-  #changed() {
+  #changed(graph = false) {
     this.version++;
+    if (graph) this.#graphDirty = true;
     clearTimeout(this.#saveTimer);
+    // State and graph are plain data (tracks are snapshotted on the way in), so
+    // IndexedDB can structured-clone them directly. The graph is only rewritten when it changed.
     this.#saveTimer = setTimeout(() => {
-      // Snapshot via JSON so Svelte proxies or class instances never reach IndexedDB.
-      void set('taste', JSON.parse(JSON.stringify(this.state))).catch(() => {});
-      void set('graph', JSON.parse(JSON.stringify(this.graph))).catch(() => {});
-    }, 2500);
+      void set('taste', this.state).catch(() => {});
+      if (this.#graphDirty) {
+        this.#graphDirty = false;
+        void set('graph', this.graph).catch(() => {});
+      }
+    }, 4000);
   }
 
   // ---- signals ----
@@ -108,12 +116,20 @@ class Taste {
     this.#changed();
   }
 
+  /** Following an artist is a strong, explicit taste signal. */
+  follow(ref: { id: string; title: string }, on: boolean) {
+    const a = (this.state.artists[ref.id] ??= { name: ref.title, id: ref.id, fb: 0 });
+    a.fb += on ? 1.5 : -1.5;
+    this.#changed();
+  }
+
   reset() {
     const name = this.state.name;
     this.state = { ...emptyState(), name, onboarded: false };
     this.graph = emptyGraph();
     this.mixes = NO_MIXES;
-    this.#changed();
+    void set('mixes', NO_MIXES).catch(() => {});
+    this.#changed(true);
   }
 
   // ---- graph growth ----
@@ -126,8 +142,8 @@ class Taste {
       p = source
         .radio(t)
         .then((radio) => {
-          addRadio(this.graph, plain(t), radio);
-          this.#changed();
+          addRadio(this.graph, plain(t), radio.map(plain));
+          this.#changed(true);
         })
         .catch(() => {})
         .finally(() => this.#expanding.delete(t.id));
@@ -172,6 +188,7 @@ class Taste {
       };
       this.#builtAt = Date.now();
       this.#builtVersion = this.version;
+      void set('mixes', $state.snapshot(this.mixes)).catch(() => {});
     } finally {
       this.building = false;
     }
@@ -182,10 +199,13 @@ class Taste {
     return [m.now, m.fresh, m.repeat, m.rotation, ...m.worlds].find((x) => x?.id === id) ?? null;
   }
 
-  /** Autoplay: next songs steered by this session. */
-  async next(current: Track, recent: Track[], skippedArtists: Set<string>): Promise<{ track: Track; reason: string }[]> {
-    await this.expand(current);
-    return flow(this.state, this.graph, this.ctx(), current, recent, skippedArtists, 10).map((x) => ({ track: x.track, reason: x.reason }));
+  /** Autoplay: the next few songs, anchored on the one playing and steered by the session. */
+  async next(current: Track, session: FlowSession, n = 6): Promise<{ track: Track; reason: string }[]> {
+    await this.expand(plain(current));
+    // Densify the neighbourhood: the strongest neighbours' radios, in the background.
+    const nb = Object.entries(this.graph.edges[current.id] ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 2);
+    for (const [id] of nb) if (this.graph.nodes[id]) void this.expand(this.graph.nodes[id]);
+    return flow(this.state, this.graph, this.ctx(), current, session, n).map((x) => ({ track: x.track, reason: x.reason }));
   }
 
   // ---- onboarding ----

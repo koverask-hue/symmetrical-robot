@@ -9,7 +9,7 @@ import { appendUnique, indexAfterMove, move, nextIndex, prevIndex, shuffleUpcomi
 import { load, save } from '../util/persist';
 import { taste } from '../taste/store.svelte';
 import { FeatureMeter } from '../taste/features';
-import { artistKey } from '../taste/model';
+import type { Steer } from '../taste/recommend';
 
 const PRELOAD_AT = 25; // seconds before the end to start buffering the next track
 const RADIO_WHEN_LEFT = 2; // fetch more radio tracks when this few remain
@@ -42,6 +42,10 @@ class Player {
   muted = $state(false);
   repeat = $state<Repeat>(load('repeat', 'off'));
   shuffled = $state(false);
+  /** How autoplay picks what comes next. */
+  steer = $state<Steer>(load('steer', 'similar'));
+  /** Sleep timer: a timestamp, 'end' (after this song), or null. */
+  sleepAt = $state<number | 'end' | null>(null);
 
   /** Why a queued track was picked, when it came from a mix or autoplay. */
   reasons = $state<Record<string, string>>({});
@@ -59,7 +63,7 @@ class Player {
   #session: Session | null = null;
   #meter = new FeatureMeter();
   #recent: Track[] = [];
-  #skipped = new Map<string, number>();
+  #skipped: { track: Track; at: number }[] = [];
   #autoAdded = new Set<string>();
   #autoSkipStreak = 0;
 
@@ -75,6 +79,7 @@ class Player {
     });
     this.#engine.setVolume(this.volume);
     this.#engine.crossfade = library.settings.crossfade;
+    this.#engine.setNormalize(library.settings.normalize);
     if (typeof window !== 'undefined') {
       setInterval(() => this.#tick(), 200);
       // Sound fingerprint for the taste model, sampled from the visualiser's analyser.
@@ -110,6 +115,43 @@ class Player {
     this.#autoAdded.clear();
     this.reasons = opts.reasons ? { ...opts.reasons } : {};
     void this.#start(start, 0, false, opts.chosen ?? true);
+  }
+
+  /** Warm the stream for a track the user is about to pick (hover, focus). */
+  warm(t: Track) {
+    source.prefetch?.(t);
+  }
+
+  setSteer(steer: Steer) {
+    this.steer = steer;
+    save('steer', steer);
+    this.#resteer();
+  }
+
+  /** "More like this": learn it, and rebuild what's coming next around this song. */
+  moreLikeThis() {
+    const t = this.current;
+    if (!t) return;
+    taste.feedback(t, 'more');
+    if (this.steer !== 'similar') {
+      this.steer = 'similar';
+      save('steer', 'similar');
+    }
+    this.#resteer();
+    toasts.show(`Up next: more like “${t.title}”`);
+  }
+
+  /** Replace autoplay picks that haven't played yet with fresh ones for the current steer. */
+  #resteer() {
+    const head = this.queue.slice(0, this.index + 1);
+    const tail = this.queue.slice(this.index + 1).filter((x) => !this.#autoAdded.has(x.id));
+    this.queue = [...head, ...tail];
+    void this.#maybeRadio(true);
+  }
+
+  setSleep(minutes: number | 'end' | null) {
+    this.sleepAt = minutes === null ? null : minutes === 'end' ? 'end' : Date.now() + minutes * 60_000;
+    if (minutes !== null) toasts.show(minutes === 'end' ? 'Stopping after this song' : `Stopping in ${minutes} minutes`);
   }
 
   /** Play one track now and fill the rest of the queue with its radio. */
@@ -185,6 +227,8 @@ class Player {
     this.buffering = true;
     library.recordPlay(t);
     this.#updateMediaSession();
+    // The next two are resolved right away so skipping ahead is instant.
+    for (const n of this.queue.slice(i + 1, i + 3)) source.prefetch?.(n);
     try {
       let url = await this.#url(t);
       if (fresh) url += `${url.includes('?') ? '&' : '?'}fresh=1`;
@@ -227,6 +271,11 @@ class Player {
     this.seek(Math.max(0, this.#engine.time + d));
   }
 
+  setNormalize(on: boolean) {
+    this.#engine.setNormalize(on);
+    library.updateSettings({ normalize: on });
+  }
+
   setVolume(v: number) {
     this.volume = Math.max(0, Math.min(1, v));
     this.muted = false;
@@ -262,6 +311,11 @@ class Player {
       ses.lastT = now;
     }
     this.position = now;
+    if (typeof this.sleepAt === 'number' && Date.now() >= this.sleepAt && this.playing) {
+      this.sleepAt = null;
+      this.toggle();
+      toasts.show('Sleep timer: paused. Good night.');
+    }
     const d = this.#engine.duration;
     if (d > 0) this.duration = d;
     const left = this.duration - this.position;
@@ -276,6 +330,13 @@ class Player {
   }
 
   #onEnded() {
+    if (this.sleepAt === 'end') {
+      this.sleepAt = null;
+      this.#finish(true);
+      this.playing = false;
+      this.#engine.pause();
+      return;
+    }
     const i = nextIndex({ tracks: this.queue, index: this.index }, this.repeat, false);
     if (i < 0) {
       this.#finish(true);
@@ -331,9 +392,9 @@ class Player {
     this.#radioLoading = true;
     try {
       const cutoff = Date.now() - SKIP_MEMORY;
-      const skipped = new Set([...this.#skipped].filter(([, at]) => at > cutoff).map(([k]) => k));
-      // Your taste decides what comes next; YouTube's radio is the fallback for a cold start.
-      let picks = await taste.next(this.current, this.#recent, skipped).catch(() => []);
+      const skipped = this.#skipped.filter((x) => x.at > cutoff).map((x) => x.track);
+      // Anchored on what's playing; your taste and the steer decide the order.
+      let picks = await taste.next(this.current, { recent: this.#recent, skipped, steer: this.steer }).catch(() => []);
       if (picks.length < 3) picks = (await source.radio(this.current)).map((track) => ({ track, reason: 'From YouTube Music radio' }));
       const before = this.queue.length;
       this.queue = appendUnique(this.queue, picks.map((p) => p.track));
@@ -368,15 +429,13 @@ class Player {
     });
     this.#recent = [...this.#recent.slice(-19), ses.track];
     const skip = outcome === 'skip' || outcome === 'early-skip';
-    if (skip) this.#skipped.set(artistKey(ses.track), Date.now());
+    if (skip) this.#skipped = [...this.#skipped.slice(-19), { track: ses.track, at: Date.now() }];
     // Two quick skips of autoplay picks in a row: the queue is off. Re-steer it now.
     if (skip && !ses.chosen && this.#autoAdded.has(ses.track.id)) {
       if (++this.#autoSkipStreak >= 2) {
         this.#autoSkipStreak = 0;
-        const keep = this.queue.slice(0, this.index + 2);
-        const dropped = this.queue.slice(this.index + 2).filter((x) => !this.#autoAdded.has(x.id));
-        this.queue = [...keep, ...dropped];
-        void this.#maybeRadio(true);
+        // After the index has moved to the next song, so that song is kept.
+        setTimeout(() => this.#resteer(), 0);
         toasts.show('Got it. Steering away from that sound.');
       }
     } else if (!skip) this.#autoSkipStreak = 0;

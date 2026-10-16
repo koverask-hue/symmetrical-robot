@@ -24,7 +24,16 @@ const RESOLVE_TIMEOUT: Duration = Duration::from_secs(45);
 pub struct Resolved {
     pub url: String,
     pub headers: HashMap<String, String>,
+    pub info: StreamInfo,
     expires: Instant,
+}
+
+/// What's actually being played, for the badge in the player.
+#[derive(Clone, Debug, Default, serde::Serialize)]
+pub struct StreamInfo {
+    pub codec: String,
+    pub kbps: u32,
+    pub khz: u32,
 }
 
 #[derive(Deserialize)]
@@ -32,6 +41,9 @@ struct Info {
     url: Option<String>,
     #[serde(default)]
     http_headers: HashMap<String, String>,
+    acodec: Option<String>,
+    abr: Option<f64>,
+    asr: Option<f64>,
 }
 
 pub struct Resolver {
@@ -173,6 +185,11 @@ impl Resolver {
         let _ = Command::new(&managed).arg("-U").arg("--quiet").kill_on_drop(true).output().await;
     }
 
+    /// Format details of a stream that's already resolved (no yt-dlp run).
+    pub async fn info(&self, id: &str) -> Option<StreamInfo> {
+        self.cache.lock().await.get(id).map(|r| r.info.clone())
+    }
+
     pub async fn invalidate(&self, id: &str) {
         self.cache.lock().await.remove(id);
     }
@@ -239,7 +256,18 @@ impl Resolver {
 pub fn parse_info(json: &[u8]) -> Result<Resolved, String> {
     let info: Info = serde_json::from_slice(json).map_err(|e| format!("bad yt-dlp output: {e}"))?;
     let url = info.url.ok_or("no playable audio format")?;
-    Ok(Resolved { expires: Instant::now() + ttl_for(&url), url, headers: info.http_headers })
+    let codec = match info.acodec.as_deref().unwrap_or("") {
+        c if c.starts_with("opus") => "OPUS",
+        c if c.starts_with("mp4a") => "AAC",
+        c if c.starts_with("vorbis") => "VORBIS",
+        _ => "AUDIO",
+    };
+    let stream = StreamInfo {
+        codec: codec.into(),
+        kbps: info.abr.unwrap_or(0.0).round() as u32,
+        khz: (info.asr.unwrap_or(0.0) / 1000.0).round() as u32,
+    };
+    Ok(Resolved { expires: Instant::now() + ttl_for(&url), url, headers: info.http_headers, info: stream })
 }
 
 #[cfg(unix)]
@@ -286,8 +314,9 @@ mod tests {
 
     #[test]
     fn parses_ytdlp_json() {
-        let r = parse_info(br#"{"id":"x","url":"https://a.googlevideo.com/v?expire=1","http_headers":{"User-Agent":"UA"},"ext":"webm"}"#).unwrap();
+        let r = parse_info(br#"{"id":"x","url":"https://a.googlevideo.com/v?expire=1","http_headers":{"User-Agent":"UA"},"ext":"webm","acodec":"opus","abr":129.6,"asr":48000}"#).unwrap();
         assert_eq!(r.url, "https://a.googlevideo.com/v?expire=1");
+        assert_eq!((r.info.codec.as_str(), r.info.kbps, r.info.khz), ("OPUS", 130, 48));
         assert_eq!(r.headers.get("User-Agent").map(String::as_str), Some("UA"));
         assert!(parse_info(br#"{"id":"x"}"#).is_err());
         assert!(parse_info(b"garbage").is_err());

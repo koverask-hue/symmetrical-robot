@@ -26,7 +26,8 @@ describe('pickBest', () => {
     const best = pickBest([rec(200, false), rec(240, true), rec(201, true)], 200);
     expect(best?.duration).toBe(201);
   });
-  it('rejects results whose duration is far off', () => {
+  it('rejects results whose duration is far off, tolerates a short intro', () => {
     expect(pickBest([rec(300, true)], 200)).toBeUndefined();
+    expect(pickBest([rec(191, true)], 200)?.duration).toBe(191);
   });
 });

@@ -13,6 +13,12 @@ struct AppState {
     http: reqwest::Client,
 }
 
+/// Codec/bitrate of a resolved stream, for the player's format badge.
+#[tauri::command]
+async fn stream_info(id: String, state: State<'_, AppState>) -> Result<Option<ytdlp::StreamInfo>, String> {
+    Ok(state.resolver.info(&id).await)
+}
+
 /// InnerTube request with browser-accurate headers (see ytweb.rs for why).
 #[tauri::command]
 async fn yt_request(req: ytweb::YtRequest, state: State<'_, AppState>) -> Result<ytweb::YtResponse, String> {
@@ -58,7 +64,7 @@ pub fn run() {
             app.manage(AppState { proxy_base, resolver, http });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![proxy_base, prefetch_stream, yt_request])
+        .invoke_handler(tauri::generate_handler![proxy_base, prefetch_stream, yt_request, stream_info])
         .run(tauri::generate_context!())
         .expect("error while running Moonbow");
 }

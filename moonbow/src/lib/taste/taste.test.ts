@@ -139,12 +139,28 @@ describe('recommend', () => {
     expect(new Set(w.map((m) => m.id)).size).toBe(2);
   });
 
-  it('flow avoids artists you just skipped and the songs you just heard', () => {
+  it('flow stays next to the current song and avoids what you skipped', () => {
     const { s, g, c } = world();
-    const next = flow(s, g, c, s.tracks.a1.track, [s.tracks.b1.track], new Set(['e']), 5);
-    expect(next.map((x) => x.track.id)).not.toContain('a1');
-    expect(next.map((x) => x.track.id)).not.toContain('b1');
+    // c1 (morning artist C) is a favourite but lives in another corner of the graph.
+    const next = flow(s, g, c, s.tracks.a1.track, { recent: [s.tracks.b1.track], skipped: [T('new1', 'e')], steer: 'similar' }, 4);
+    const ids = next.map((x) => x.track.id);
+    expect(ids).not.toContain('a1');
+    expect(ids).not.toContain('b1');
+    expect(ids.some((id) => id.startsWith('c') || id.startsWith('d'))).toBe(false);
     expect(next.findIndex((x) => x.track.artists[0].id === 'e')).toBe(-1);
+    expect(next.every((x) => x.reason.length > 0)).toBe(true);
+  });
+
+  it('flow steers: discover is all new, favorites all heard, artist leans on the artist', () => {
+    const { s, g, c } = world();
+    const base = { recent: [], skipped: [] };
+    const disc = flow(s, g, c, s.tracks.a1.track, { ...base, steer: 'discover' }, 5);
+    expect(disc.length).toBeGreaterThan(0);
+    expect(disc.every((x) => !s.tracks[x.track.id] || s.tracks[x.track.id].plays === 0)).toBe(true);
+    const fav = flow(s, g, c, s.tracks.a1.track, { ...base, steer: 'favorites' }, 5);
+    expect(fav.every((x) => s.tracks[x.track.id]?.plays > 0)).toBe(true);
+    const art = flow(s, g, c, s.tracks.a1.track, { ...base, steer: 'artist' }, 5);
+    expect(art[0].track.artists[0].id).toBe('a');
   });
 
   it('spreads artists out', () => {

@@ -1,6 +1,6 @@
 {
   "name": "moonbow",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A music player that learns you: YouTube Music with an on-device taste engine, karaoke lyrics and a living sky.",
   "private": true,
   "type": "module",
@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
     "@fontsource/instrument-serif": "5.3.0",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-http": "^2.8.3",

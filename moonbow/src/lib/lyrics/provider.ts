@@ -12,7 +12,7 @@ export type LyricsResult =
   | { kind: 'none' };
 
 const LRCLIB = 'https://lrclib.net/api';
-const HEADERS = { 'Lrclib-Client': 'Moonbow 0.2.0 (https://github.com/koverask-hue/symmetrical-robot)' };
+const HEADERS = { 'Lrclib-Client': 'Moonbow 0.3.0 (https://github.com/koverask-hue/symmetrical-robot)' };
 
 /** Strips the decorations YouTube titles carry, which make lyric lookups miss. */
 export function cleanTitle(title: string): string {
@@ -43,7 +43,9 @@ async function lrclib(path: string, params: Record<string, string>): Promise<Res
 
 /** Pick the closest-duration result that has synced lyrics, or failing that any lyrics. */
 export function pickBest(results: LrclibRecord[], duration: number): LrclibRecord | undefined {
-  const near = (r: LrclibRecord) => !duration || !r.duration || Math.abs(r.duration - duration) <= 4;
+  // YouTube's upload of a song often runs a few seconds longer (silence, intro);
+  // 12 s still rules out a different song or a remix, and the closest match wins.
+  const near = (r: LrclibRecord) => !duration || !r.duration || Math.abs(r.duration - duration) <= 12;
   const score = (r: LrclibRecord) => (r.syncedLyrics ? 0 : 10) + (duration && r.duration ? Math.abs(r.duration - duration) : 2);
   return results.filter(near).sort((a, b) => score(a) - score(b))[0];
 }

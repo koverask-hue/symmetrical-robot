@@ -1,41 +1,57 @@
-@import '@fontsource/instrument-serif/latin-400.css';
-@import '@fontsource/instrument-serif/latin-400-italic.css';
 @import '@fontsource-variable/geist/wght.css';
+@import '@fontsource-variable/geist-mono/wght.css';
 
 /*
-  Moonbow design system.
-  1. The song is the theme: --tint/--tint-2 come from the cover that's playing.
-  2. Editorial, not dashboard: serif headlines, generous space, few lines.
-  3. Light, not boxes: depth from blur, glow and grain instead of borders and grids.
-  4. Calm motion: one easing curve, nothing bounces for its own sake.
+  Moonbow — black, clean, one accent.
+  - Near-black surfaces in four steps, hairline borders, no glass over moving content.
+  - Geist for everything you read, Geist Mono for the small facts (times, counts, codecs, labels).
+  - One accent colour (pick it in Settings). The playing cover only adds a faint ambient glow.
+  - Nothing animates every frame except the progress, the spectrum and the lyrics.
 */
 :root {
-  --night: #06050b;
-  --text: #f6f3ff;
-  --text-2: rgb(246 243 255 / 0.64);
-  --text-3: rgb(246 243 255 / 0.4);
-  --text-4: rgb(246 243 255 / 0.22);
-  --hair: rgb(255 255 255 / 0.07);
-  --hover: rgb(255 255 255 / 0.06);
-  --active: rgb(255 255 255 / 0.1);
+  --bg: #070708;
+  --bg-1: #0c0c0e;
+  --bg-2: #131316;
+  --bg-3: #1b1b1f;
+  --bg-4: #242429;
+  --hair: rgb(255 255 255 / 0.065);
+  --hair-2: rgb(255 255 255 / 0.11);
+  --text: #f4f4f5;
+  --text-2: #a1a1aa;
+  --text-3: #6b6b74;
+  --text-4: #45454c;
 
-  /* Updated live from the playing cover (see Backdrop.svelte). */
-  --tint: 182 160 255;
-  --tint-2: 255 170 214;
+  --accent: #d4ff3f;
+  --accent-rgb: 212 255 63;
+  --accent-ink: #0a0a0a;
 
-  --iris: linear-gradient(100deg, #9fefff 0%, #b9a8ff 28%, #ffaee0 55%, #ffd9a6 80%, #9fefff 100%);
-  --glass: rgb(16 12 28 / 0.42);
-  --glass-strong: rgb(14 10 24 / 0.72);
-  --glass-edge: inset 0 0 0 1px rgb(255 255 255 / 0.07), inset 0 1px 0 rgb(255 255 255 / 0.08);
-  --lift: 0 30px 80px -20px rgb(0 0 0 / 0.6);
+  /* From the playing cover (Backdrop.svelte); used only for ambient light. */
+  --tint: 120 120 140;
 
-  --serif: 'Instrument Serif', 'Iowan Old Style', 'Palatino', Georgia, serif;
   --sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 
-  --rail: 76px;
-  --capsule: 84px;
+  --side: 264px;
+  --bar: 88px;
   color-scheme: dark;
+}
+
+:root[data-accent='ice'] {
+  --accent: #7fe3ff;
+  --accent-rgb: 127 227 255;
+}
+:root[data-accent='ember'] {
+  --accent: #ff7a45;
+  --accent-rgb: 255 122 69;
+}
+:root[data-accent='orchid'] {
+  --accent: #c7a2ff;
+  --accent-rgb: 199 162 255;
+}
+:root[data-accent='silver'] {
+  --accent: #e9e9ec;
+  --accent-rgb: 233 233 236;
 }
 
 * {
@@ -43,8 +59,7 @@
 }
 
 html {
-  /* Only on html: a body background would paint over the z-index:-1 sky. */
-  background: var(--night);
+  background: var(--bg);
 }
 
 html,
@@ -54,22 +69,9 @@ body {
   overflow: hidden;
   color: var(--text);
   font: 400 14px/1.5 var(--sans);
-  letter-spacing: -0.005em;
+  letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: 'ss01', 'cv11';
   user-select: none;
-}
-
-/* Film grain over everything: kills gradient banding and makes the glass feel physical. */
-body::after {
-  content: '';
-  position: fixed;
-  inset: -50%;
-  z-index: 100;
-  pointer-events: none;
-  opacity: 0.07;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 #app {
@@ -89,9 +91,9 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 [tabindex]:focus-visible {
-  outline: 1.5px solid rgb(var(--tint));
-  outline-offset: 3px;
-  border-radius: 10px;
+  outline: 1.5px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
 }
 
 input {
@@ -104,60 +106,45 @@ img {
 }
 
 ::selection {
-  background: rgb(var(--tint) / 0.4);
+  background: rgb(var(--accent-rgb) / 0.35);
 }
 
 /* ---- type ---- */
 
-.serif {
-  font-family: var(--serif);
-  font-weight: 400;
-  letter-spacing: -0.01em;
+.h1 {
+  font: 650 clamp(34px, 3.6vw, 52px) / 1.02 var(--sans);
+  letter-spacing: -0.042em;
+  margin: 0;
 }
 
-.display {
-  font: 400 clamp(44px, 5.6vw, 84px) / 0.96 var(--serif);
+.h2 {
+  font: 620 21px/1.2 var(--sans);
   letter-spacing: -0.025em;
   margin: 0;
 }
 
-.display em,
-.serif em {
-  font-style: italic;
+.mono,
+.label {
+  font-family: var(--mono);
+  font-feature-settings: 'zero', 'ss01';
 }
 
-.kicker {
-  font: 500 11px/1 var(--sans);
-  letter-spacing: 0.22em;
+.label {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--text-3);
 }
 
-.iris-text {
-  background: var(--iris);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: iris 12s linear infinite;
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
-@keyframes iris {
-  to {
-    background-position: -200% 0;
-  }
-}
-
-h1,
-h2,
-h3 {
-  margin: 0;
-  font-weight: 400;
-}
-
-.section-title {
-  font: 400 30px/1.1 var(--serif);
-  letter-spacing: -0.015em;
+.accent {
+  color: var(--accent);
 }
 
 .muted {
@@ -176,50 +163,58 @@ h3 {
 
 .link {
   cursor: pointer;
-  transition: color 0.2s;
+  transition: color 0.15s;
 }
 .link:hover {
   color: var(--text);
   text-decoration: underline;
-  text-decoration-color: rgb(255 255 255 / 0.3);
+  text-decoration-color: var(--hair-2);
   text-underline-offset: 3px;
 }
 
-/* ---- surfaces ---- */
-
-.glass {
-  background: var(--glass);
-  backdrop-filter: blur(32px) saturate(170%);
-  -webkit-backdrop-filter: blur(32px) saturate(170%);
-  box-shadow: var(--glass-edge), var(--lift);
+/* A reason for a pick: small, quiet, but always there. */
+.reason {
+  font: 450 11.5px/1.35 var(--mono);
+  letter-spacing: -0.01em;
+  color: var(--text-3);
 }
+.reason::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin: 0 7px 1px 0;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+/* ---- surfaces & controls ---- */
 
 .scroll {
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgb(255 255 255 / 0.14) transparent;
+  scrollbar-color: var(--bg-4) transparent;
 }
-
-/* ---- controls ---- */
 
 .icon-btn {
   display: inline-grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   color: var(--text-2);
-  transition: color 0.25s var(--ease), background 0.25s var(--ease), transform 0.2s var(--ease);
+  transition: color 0.15s, background 0.15s, transform 0.12s;
 }
 .icon-btn:hover {
   color: var(--text);
-  background: var(--hover);
+  background: var(--bg-3);
 }
 .icon-btn:active {
   transform: scale(0.92);
 }
 .icon-btn.on {
-  color: rgb(var(--tint));
+  color: var(--accent);
 }
 .icon-btn:disabled {
   opacity: 0.3;
@@ -229,70 +224,89 @@ h3 {
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  height: 44px;
-  padding: 0 22px;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px;
   border-radius: 999px;
-  font-weight: 550;
-  letter-spacing: -0.01em;
-  background: rgb(255 255 255 / 0.08);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
-  transition: background 0.25s var(--ease), transform 0.2s var(--ease), box-shadow 0.3s var(--ease);
+  font-weight: 560;
+  font-size: 13.5px;
+  background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  transition: background 0.15s, transform 0.12s, color 0.15s;
 }
 .btn:hover {
-  background: rgb(255 255 255 / 0.13);
+  background: var(--bg-4);
 }
 .btn:active {
   transform: scale(0.97);
 }
 .btn.primary {
-  background: var(--text);
-  color: #0b0814;
-  box-shadow: 0 10px 40px -8px rgb(var(--tint) / 0.7);
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: none;
 }
 .btn.primary:hover {
-  background: #fff;
-  box-shadow: 0 14px 50px -6px rgb(var(--tint) / 0.9);
+  filter: brightness(1.07);
+}
+.btn.on {
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / 0.4);
 }
 .btn:disabled {
   opacity: 0.4;
   pointer-events: none;
 }
 
+.round-play {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  transition: transform 0.15s var(--ease), filter 0.15s;
+}
+.round-play:hover {
+  transform: scale(1.05);
+  filter: brightness(1.07);
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
-  padding: 0 13px;
+  height: 28px;
+  padding: 0 11px;
   border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 520;
   color: var(--text-2);
-  background: rgb(255 255 255 / 0.06);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
-  transition: 0.25s var(--ease);
+  background: var(--bg-2);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  transition: 0.15s;
 }
 .chip:hover {
   color: var(--text);
-  background: rgb(255 255 255 / 0.11);
+  background: var(--bg-3);
 }
 .chip.on {
-  color: #0b0814;
-  background: var(--text);
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow: none;
 }
 
-.reason {
-  font: italic 400 13.5px/1.3 var(--serif);
-  color: rgb(var(--tint) / 0.95);
-  letter-spacing: 0;
+.panel {
+  background: var(--bg-1);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  border-radius: 16px;
 }
 
 .skeleton {
-  background: linear-gradient(90deg, rgb(255 255 255 / 0.04), rgb(255 255 255 / 0.09), rgb(255 255 255 / 0.04));
+  background: linear-gradient(90deg, var(--bg-2), var(--bg-3), var(--bg-2));
   background-size: 200% 100%;
-  animation: shimmer 1.6s infinite linear;
-  border-radius: 14px;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 10px;
 }
 @keyframes shimmer {
   to {
@@ -301,22 +315,21 @@ h3 {
 }
 
 kbd {
-  font: 500 10.5px/1 var(--sans);
-  padding: 4px 6px;
-  border-radius: 6px;
-  background: rgb(255 255 255 / 0.07);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+  font: 500 10.5px/1 var(--mono);
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px var(--hair);
   color: var(--text-3);
 }
 
 .enter {
-  animation: enter 0.7s var(--ease) both;
+  animation: enter 0.35s var(--ease) both;
 }
 @keyframes enter {
   from {
     opacity: 0;
-    transform: translateY(14px);
-    filter: blur(6px);
+    transform: translateY(6px);
   }
 }
 

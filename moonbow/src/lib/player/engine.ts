@@ -26,6 +26,8 @@ export class Engine {
   #active = 0;
   #ctx?: AudioContext;
   #master?: GainNode;
+  #comp?: DynamicsCompressorNode;
+  #normalize = false;
   #analyser?: AnalyserNode;
   #bins = new Uint8Array(FFT / 2);
   #volume = 1;
@@ -91,7 +93,16 @@ export class Engine {
       analyser.fftSize = FFT;
       analyser.smoothingTimeConstant = 0.78;
       master.gain.value = this.#volume;
-      master.connect(analyser).connect(ctx.destination);
+      // Gentle compressor for level-matching loud and quiet songs; bypassed when off.
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -20;
+      comp.knee.value = 24;
+      comp.ratio.value = 3.5;
+      comp.attack.value = 0.005;
+      comp.release.value = 0.3;
+      this.#comp = comp;
+      master.connect(analyser);
+      this.#route(analyser, ctx.destination);
       for (const d of this.#decks) {
         d.gain = ctx.createGain();
         ctx.createMediaElementSource(d.el).connect(d.gain).connect(master);
@@ -104,6 +115,18 @@ export class Engine {
       // No Web Audio: fall back to element volume, visuals run without audio input.
       for (const d of this.#decks) d.el.volume = this.#volume;
     }
+  }
+
+  #route(analyser: AnalyserNode, dest: AudioNode) {
+    analyser.disconnect();
+    this.#comp?.disconnect();
+    if (this.#normalize && this.#comp) analyser.connect(this.#comp).connect(dest);
+    else analyser.connect(dest);
+  }
+
+  setNormalize(on: boolean) {
+    this.#normalize = on;
+    if (this.#ctx && this.#analyser) this.#route(this.#analyser, this.#ctx.destination);
   }
 
   get #deck() {

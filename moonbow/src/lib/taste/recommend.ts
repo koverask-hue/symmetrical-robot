@@ -244,17 +244,110 @@ export function onRepeat(s: TasteState, c: Ctx): Mix | null {
   return d.length >= 5 ? toMix('repeat', 'repeat', 'On repeat', 'What you can’t stop playing', d) : null;
 }
 
+export type Steer = 'similar' | 'discover' | 'favorites' | 'artist';
+
+export const STEERS: { id: Steer; label: string; hint: string }[] = [
+  { id: 'similar', label: 'Similar', hint: 'Closest to what’s playing' },
+  { id: 'discover', label: 'Discover', hint: 'Same feel, songs you’ve never heard' },
+  { id: 'favorites', label: 'Favorites', hint: 'Your own songs that fit here' },
+  { id: 'artist', label: 'This artist', hint: 'More from them and their closest peers' },
+];
+
+export interface FlowSession {
+  /** Last few songs, newest last: the session's vibe. */
+  recent: Track[];
+  /** Songs skipped this session: push away from them and their neighbours. */
+  skipped: Track[];
+  steer: Steer;
+}
+
 /**
- * Next tracks for autoplay, steered by this session: what you're playing now and
- * what you've skipped in the last few songs.
+ * Autoplay. Anchored on the song that's playing: candidates come only from its
+ * neighbourhood in the song graph (YouTube radio around it), so the next song is
+ * always close to this one. Your taste decides the order within that
+ * neighbourhood; the steer decides how.
  */
-export function flow(s: TasteState, g: SongGraph, c: Ctx, current: Track, recent: Track[], skippedArtists: Set<string>, n = 10): Scored[] {
+export function flow(s: TasteState, g: SongGraph, c: Ctx, current: Track, session: FlowSession, n = 6): Scored[] {
   const seeds = new Map<string, number>([[current.id, 1]]);
-  recent.slice(-4).forEach((t, i) => seeds.set(t.id, (seeds.get(t.id) ?? 0) + 0.25 * (i + 1)));
-  for (const [id, v] of topSeeds(s, c, 3)) seeds.set(id, (seeds.get(id) ?? 0) + v * 0.3);
-  const exclude = new Set([current.id, ...recent.map((t) => t.id)]);
-  const ranked = rank(s, g, c, { seeds, avoid: skippedArtists, freshness: 1.5 }).filter((x) => !exclude.has(x.track.id));
-  return diversify(ranked, n, 2);
+  session.recent.slice(-3).forEach((t) => t.id !== current.id && seeds.set(t.id, 0.12));
+  // High restart = stay local: neighbours of the current song, not your whole library.
+  const ppr = personalizedPageRank(g, seeds, 14, 0.42);
+  const maxPpr = Math.max(1e-9, ...[...ppr.entries()].filter(([k]) => k !== current.id).map(([, v]) => v));
+  const arts = artistAffinities(s, c.now);
+  const boost = contextBoost(s, c.ctx);
+  const curKey = artistKey(current);
+  const ag = artistGraph(g);
+  const curPeers = ag.get(curKey) ?? new Map<string, number>();
+  const maxPeer = Math.max(1e-9, ...curPeers.values());
+  const curFeat = s.tracks[current.id]?.feat;
+  const adventurous = explore(s);
+  const exclude = new Set([current.id, ...session.recent.map((t) => t.id)]);
+  const skippedArtists = new Set(session.skipped.map(artistKey));
+  const nearSkipped = new Set<string>();
+  for (const t of session.skipped) for (const k of Object.keys(g.edges[t.id] ?? {})) nearSkipped.add(k);
+
+  const pool = new Map<string, Track>();
+  for (const id of ppr.keys()) if (g.nodes[id]) pool.set(id, g.nodes[id]);
+  if (session.steer === 'artist' || session.steer === 'favorites') {
+    for (const st of Object.values(s.tracks)) {
+      const k = artistKey(st.track);
+      if (k === curKey || (session.steer === 'favorites' && curPeers.has(k))) pool.set(st.track.id, st.track);
+    }
+  }
+
+  const out: Scored[] = [];
+  for (const [id, track] of pool) {
+    if (exclude.has(id)) continue;
+    const st = s.tracks[id];
+    const k = artistKey(track);
+    const aAff = arts.get(k) ?? 0;
+    if (aAff === -Infinity) continue;
+    const tAff = trackAffinity(st, c.now);
+    if (tAff < -0.35) continue;
+    const heard = !!st && (st.plays > 0 || !!st.seeded);
+    const close = Math.sqrt((ppr.get(id) ?? 0) / maxPpr);
+    const sameArtist = k === curKey;
+    const peer = sameArtist ? 1 : (curPeers.get(k) ?? 0) / maxPeer;
+    const sound = featureMatch(st?.feat, curFeat ?? null);
+    const personal = Math.max(0, aAff) * 0.6 + Math.max(0, tAff) * 0.4;
+    const ctxB = Math.max(-1, Math.min(1, Math.log(boost.get(k) ?? 1)));
+
+    let score: number;
+    switch (session.steer) {
+      case 'discover':
+        if (heard) continue;
+        score = 0.62 * close + 0.14 * peer + 0.1 * sound + 0.14 * Math.max(0, aAff);
+        break;
+      case 'favorites':
+        if (!heard) continue;
+        score = 0.35 * close + 0.2 * peer + 0.1 * sound + 0.35 * personal;
+        break;
+      case 'artist':
+        score = 0.25 * close + 0.6 * peer + 0.15 * personal;
+        break;
+      default:
+        score = 0.58 * close + 0.12 * peer + 0.1 * sound + 0.12 * personal + 0.04 * ctxB + (heard ? 0 : 0.04 * adventurous);
+    }
+    if (skippedArtists.has(k)) score -= 0.5;
+    if (nearSkipped.has(id)) score -= 0.2;
+    if (st?.last && c.now - st.last < 3 * HOUR) score -= 0.5;
+    if (sameArtist && session.steer !== 'artist') score -= 0.08; // keep it moving, not an artist loop
+
+    out.push({ track, score, reason: flowReason(session.steer, current, track, { heard, sameArtist, tAff, close }) });
+  }
+  out.sort((a, b) => b.score - a.score);
+  // Skipped artists are out entirely, unless that would leave the queue short.
+  const clean = out.filter((x) => !skippedArtists.has(artistKey(x.track)));
+  return diversify(clean.length >= n ? clean : out, n, session.steer === 'artist' ? 6 : 2);
+}
+
+function flowReason(steer: Steer, cur: Track, t: Track, f: { heard: boolean; sameArtist: boolean; tAff: number; close: number }): string {
+  const artist = t.artists[0]?.name ?? 'them';
+  if (steer === 'artist') return f.sameArtist ? `More ${artist}` : `Close to ${cur.artists[0]?.name ?? 'this artist'}`;
+  if (steer === 'favorites') return f.tAff > 0.6 ? 'One you keep finishing' : `Yours, fits after “${cur.title}”`;
+  if (!f.heard) return `New · sounds like “${cur.title}”`;
+  if (f.close > 0.6) return `Right next to “${cur.title}”`;
+  return `Same lane as “${cur.title}”`;
 }
 
 // ---- insights ----

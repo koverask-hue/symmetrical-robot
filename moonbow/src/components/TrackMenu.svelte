@@ -65,7 +65,7 @@
   <hr />
   <button role="menuitem" onclick={act(() => { taste.feedback(t, 'more'); toasts.show(`More like “${t.title}”`); })}><Icon name="thumb-up" size={16} /> More like this</button>
   <button role="menuitem" onclick={act(() => { taste.feedback(t, 'less'); toasts.show(`Less like “${t.title}”`); })}><Icon name="thumb-down" size={16} /> Less like this</button>
-  <button role="menuitem" onclick={act(() => { taste.mute(t); toasts.show(`Hidden ${t.artists[0]?.name ?? 'artist'} from your mixes`); })}><Icon name="eye-off" size={16} /> Hide {t.artists[0]?.name ?? 'this artist'}</button>
+  <button role="menuitem" onclick={act(() => { taste.mute(t); toasts.show(`Hidden ${t.artists[0]?.name ?? 'artist'} from your mixes`); })}><Icon name="eye-off" size={16} /> <span class="ellipsis">Hide {t.artists[0]?.name ?? 'this artist'}</span></button>
   {#if menu.playlistId}
     <button role="menuitem" onclick={act(() => library.removeFromPlaylist(menu.playlistId!, t.id))} class="danger"><Icon name="trash" size={16} /> Remove from this playlist</button>
   {/if}

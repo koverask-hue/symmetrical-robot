@@ -46,7 +46,13 @@ export function onKey(e: KeyboardEvent) {
         return true;
       case 'm':
       case 'M':
-        player.toggleMute();
+        // Shift+M: more like this. Plain m (or M with caps lock): mute.
+        if (e.shiftKey) player.moreLikeThis();
+        else player.toggleMute();
+        return true;
+      case 'b':
+      case 'B':
+        library.updateSettings({ sidebar: !library.settings.sidebar });
         return true;
       case 'l':
       case 'L':

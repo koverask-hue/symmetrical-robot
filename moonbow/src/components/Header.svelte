@@ -1,34 +1,30 @@
 <script lang="ts">
-  // Editorial page header used by album, playlist, mix and library pages.
+  // Page header for album, playlist, mix and library pages: cover, mono kind, title, facts, actions.
   import type { Snippet } from 'svelte';
+  import Art from './Art.svelte';
 
   let { art, kind, title, subtitle, description, round = false, actions, visual }: {
     art?: string; kind: string; title: string; subtitle?: string; description?: string; round?: boolean;
     actions?: Snippet; visual?: Snippet;
   } = $props();
   let expanded = $state(false);
-  const words = $derived(title.split(' '));
+  const size = $derived(title.length > 40 ? 'xl' : title.length > 22 ? 'l' : '');
 </script>
 
 <header class="hdr enter">
   <div class="visual">
     {#if visual}
       {@render visual()}
-    {:else if art}
-      <img class="glow" class:round src={art} alt="" aria-hidden="true" />
-      <img class="cover" class:round src={art} alt={title} />
     {:else}
-      <div class="cover empty" class:round></div>
+      <Art src={art} size={200} {round} radius={10} alt={title} />
     {/if}
   </div>
   <div class="info">
-    <div class="kicker">{kind}</div>
-    <h1 class="display" class:long={title.length > 26}>
-      {#if words.length > 1}{words.slice(0, -1).join(' ')} <em>{words[words.length - 1]}</em>{:else}{title}{/if}
-    </h1>
-    {#if subtitle}<div class="sub">{subtitle}</div>{/if}
+    <span class="label">{kind}</span>
+    <h1 class="h1 title" class:l={size === 'l'} class:xl={size === 'xl'}>{title}</h1>
+    {#if subtitle}<div class="meta">{subtitle}</div>{/if}
     {#if description}
-      <button class="desc" class:expanded onclick={() => (expanded = !expanded)}>{description}</button>
+      <button class="desc" class:expanded onclick={() => (expanded = !expanded)} aria-expanded={expanded}>{description}</button>
     {/if}
     {#if actions}<div class="actions">{@render actions()}</div>{/if}
   </div>
@@ -38,67 +34,49 @@
   .hdr {
     display: flex;
     align-items: flex-end;
-    gap: 40px;
-    padding: 30px 12px 44px;
+    gap: 32px;
+    padding: 28px 10px 32px;
   }
   .visual {
-    position: relative;
     flex: none;
-    width: 240px;
-    height: 240px;
+    width: 200px;
+    height: 200px;
     display: grid;
     place-items: center;
   }
-  .visual:has(:global(.fan)) {
-    width: 320px;
-  }
-  .cover,
-  .glow {
-    pointer-events: none;
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 26px;
-  }
-  .cover {
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08), 0 40px 80px -30px rgb(0 0 0 / 0.9);
-  }
-  .glow {
-    filter: blur(44px) saturate(1.8);
-    opacity: 0.7;
-    transform: translateY(20px) scale(0.95);
-  }
-  .round {
-    border-radius: 50%;
-  }
-  .empty {
-    background: linear-gradient(135deg, rgb(var(--tint) / 0.35), rgb(var(--tint-2) / 0.15));
+  .visual :global(.art),
+  .visual :global(.mosaic) {
+    box-shadow: inset 0 0 0 1px var(--hair), 0 24px 48px -24px rgb(0 0 0 / 0.9);
   }
   .info {
     min-width: 0;
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
-  .display {
-    font-size: clamp(48px, 6vw, 92px);
+  .title {
+    margin: 2px 0 2px;
+    font-size: clamp(36px, 4.4vw, 64px);
+    overflow-wrap: anywhere;
   }
-  .display em {
-    font-style: italic;
-    color: rgb(var(--tint));
+  .title.l {
+    font-size: clamp(30px, 3.4vw, 46px);
   }
-  .display.long {
-    font-size: clamp(36px, 4vw, 60px);
+  .title.xl {
+    font-size: clamp(26px, 2.6vw, 36px);
+    letter-spacing: -0.03em;
   }
-  .sub {
-    font-size: 14px;
-    color: var(--text-2);
+  .meta {
+    font: 500 11px/1.4 var(--mono);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-3);
   }
   .desc {
     max-width: 640px;
-    font-size: 13.5px;
+    font-size: 13px;
+    line-height: 1.55;
     text-align: left;
     color: var(--text-3);
     display: -webkit-box;
@@ -107,6 +85,10 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     user-select: text;
+    transition: color 0.15s;
+  }
+  .desc:hover {
+    color: var(--text-2);
   }
   .desc.expanded {
     -webkit-line-clamp: unset;
@@ -115,8 +97,21 @@
   .actions {
     display: flex;
     gap: 10px;
-    margin-top: 8px;
+    margin-top: 12px;
     flex-wrap: wrap;
     align-items: center;
+  }
+  @media (max-width: 900px) {
+    .hdr {
+      gap: 22px;
+    }
+    .visual {
+      width: 160px;
+      height: 160px;
+    }
+    .visual :global(.art) {
+      width: 160px !important;
+      height: 160px !important;
+    }
   }
 </style>

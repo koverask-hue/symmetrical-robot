@@ -11,7 +11,7 @@
     onplay,
   }: {
     shelf: Shelf;
-    /** Italic part of the title. */
+    /** Quieter second part of the title (rendered in text-2). */
     accent?: string;
     note?: string;
     reasons?: Record<string, string>;
@@ -20,7 +20,7 @@
   } = $props();
   let row: HTMLDivElement;
   let canLeft = $state(false);
-  let canRight = $state(true);
+  let canRight = $state(false);
 
   function update() {
     if (!row) return;
@@ -34,15 +34,18 @@
   });
 </script>
 
-<section class="enter">
+<svelte:window onresize={update} />
+
+<section class="shelf enter">
   <header>
-    <div>
-      <h2 class="section-title">{shelf.title}{#if accent}{' '}<em>{accent}</em>{/if}</h2>
+    <div class="head">
+      <h2 class="h2">{shelf.title}{#if accent}{' '}<span class="soft">{accent}</span>{/if}</h2>
       {#if note}<p class="note">{note}</p>{/if}
     </div>
     <div class="nav">
-      <button class="icon-btn" disabled={!canLeft} onclick={() => page(-1)} aria-label="Scroll left"><Icon name="back" /></button>
-      <button class="icon-btn" disabled={!canRight} onclick={() => page(1)} aria-label="Scroll right"><Icon name="forward" /></button>
+      <span class="count num">{shelf.items.length}</span>
+      <button class="icon-btn" disabled={!canLeft} onclick={() => page(-1)} aria-label="Scroll left"><Icon name="back" size={18} /></button>
+      <button class="icon-btn" disabled={!canRight} onclick={() => page(1)} aria-label="Scroll right"><Icon name="forward" size={18} /></button>
     </div>
   </header>
   <div class="row" bind:this={row} onscroll={update}>
@@ -57,34 +60,49 @@
 </section>
 
 <style>
-  section {
-    margin-bottom: 52px;
+  .shelf {
+    margin-bottom: 40px;
   }
   header {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    padding: 0 12px 10px;
+    gap: 16px;
+    padding: 0 10px 8px;
   }
-  .section-title em {
-    font-style: italic;
-    color: rgb(var(--tint));
+  .head {
+    min-width: 0;
+  }
+  .soft {
+    color: var(--text-2);
   }
   .note {
-    margin: 4px 0 0;
-    font-size: 13px;
+    margin: 3px 0 0;
+    font-size: 12.5px;
     color: var(--text-3);
   }
   .nav {
     display: flex;
-    gap: 4px;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+  }
+  .count {
+    font-size: 11px;
+    color: var(--text-4);
+    margin-right: 8px;
+  }
+  .nav .icon-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
   }
   .row {
     display: flex;
     overflow-x: auto;
     scrollbar-width: none;
     scroll-snap-type: x proximity;
-    padding-bottom: 14px;
+    scroll-padding: 0 10px;
   }
   .row::-webkit-scrollbar {
     display: none;

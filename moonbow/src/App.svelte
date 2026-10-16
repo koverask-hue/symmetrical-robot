@@ -4,11 +4,11 @@
   import CommandPalette from './components/CommandPalette.svelte';
   import Help from './components/Help.svelte';
   import LyricsView from './components/LyricsView.svelte';
-  import NowPlaying from './components/NowPlaying.svelte';
   import Onboarding from './components/Onboarding.svelte';
+  import PlayerBar from './components/PlayerBar.svelte';
   import Queue from './components/Queue.svelte';
-  import Rail from './components/Rail.svelte';
   import Settings from './components/Settings.svelte';
+  import Sidebar from './components/Sidebar.svelte';
   import Toasts from './components/Toasts.svelte';
   import TopBar from './components/TopBar.svelte';
   import TrackMenu from './components/TrackMenu.svelte';
@@ -33,9 +33,13 @@
 
   onMount(() => void taste.load());
 
+  // New page: start at the top, and step out of the stage so you can see it.
+  let first = true;
   $effect(() => {
     r;
     main?.scrollTo({ top: 0 });
+    if (first) first = false;
+    else ui.lyricsOpen = false;
   });
 
   $effect(() => {
@@ -48,29 +52,29 @@
 
 <Backdrop />
 <div class="app" inert={onboarding}>
-<Rail />
+  <Sidebar />
 
-<main class="scroll" bind:this={main} class:dimmed={ui.lyricsOpen}>
-  <TopBar />
-  <div class="pages">
-    {#key JSON.stringify(r)}
-      {#if r.name === 'home'}<Home />
-      {:else if r.name === 'search'}<Search q={r.q} />
-      {:else if r.name === 'album'}<Collection kind="album" id={r.id} />
-      {:else if r.name === 'playlist'}<Collection kind="playlist" id={r.id} />
-      {:else if r.name === 'artist'}<Artist id={r.id} />
-      {:else if r.name === 'library'}<Library />
-      {:else if r.name === 'local'}<LocalPlaylist id={r.id} />
-      {:else if r.name === 'mix'}<MixPage id={r.id} />
-      {:else if r.name === 'taste'}<Taste />
-      {/if}
-    {/key}
-  </div>
-</main>
+  <main class="scroll" bind:this={main} class:away={ui.lyricsOpen} inert={ui.lyricsOpen}>
+    <TopBar />
+    <div class="pages">
+      {#key JSON.stringify(r)}
+        {#if r.name === 'home'}<Home />
+        {:else if r.name === 'search'}<Search q={r.q} />
+        {:else if r.name === 'album'}<Collection kind="album" id={r.id} />
+        {:else if r.name === 'playlist'}<Collection kind="playlist" id={r.id} />
+        {:else if r.name === 'artist'}<Artist id={r.id} />
+        {:else if r.name === 'library'}<Library tab={r.tab} />
+        {:else if r.name === 'local'}<LocalPlaylist id={r.id} />
+        {:else if r.name === 'mix'}<MixPage id={r.id} />
+        {:else if r.name === 'taste'}<Taste />
+        {/if}
+      {/key}
+    </div>
+  </main>
 
-{#if ui.lyricsOpen}<LyricsView />{/if}
-{#if ui.queueOpen}<Queue />{/if}
-<NowPlaying />
+  {#if ui.lyricsOpen}<LyricsView />{/if}
+  {#if ui.queueOpen}<Queue />{/if}
+  <PlayerBar />
 </div>
 
 {#if onboarding}<Onboarding />{/if}
@@ -81,22 +85,25 @@
 <Toasts />
 
 <style>
+  :global(:root[data-side='mini']) {
+    --side: 76px;
+  }
   main {
     position: fixed;
-    inset: 0;
-    padding-left: var(--rail);
+    top: 0;
+    right: 0;
+    bottom: var(--bar);
+    left: var(--side);
     container-type: inline-size;
-    transition: opacity 0.5s var(--ease), filter 0.5s var(--ease), transform 0.6s var(--ease);
+    transition: opacity 0.2s var(--ease);
   }
-  main.dimmed {
+  main.away {
     opacity: 0;
-    filter: blur(12px);
-    transform: scale(0.98);
     pointer-events: none;
   }
   .pages {
-    max-width: 1320px;
+    max-width: 1280px;
     margin: 0 auto;
-    padding: 0 40px calc(var(--capsule) + 70px);
+    padding: 0 32px 40px;
   }
 </style>

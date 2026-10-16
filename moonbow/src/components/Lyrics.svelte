@@ -125,15 +125,15 @@
 
 <div class="lyrics" class:compact bind:this={container} style:--size={library.settings.lyricsSize}>
   {#if !track}
-    <div class="empty">Play something to see its lyrics.</div>
+    <div class="empty"><span class="label">Lyrics</span>Play something to see its lyrics.</div>
   {:else if !result}
     <div class="loading">
       {#each [70, 55, 80, 45] as w, i (i)}<div class="skeleton" style:width="{w}%"></div>{/each}
     </div>
   {:else if result.kind === 'instrumental'}
-    <div class="empty">♪ Instrumental</div>
+    <div class="empty"><span class="label">Instrumental</span>No words on this one. Just listen.</div>
   {:else if result.kind === 'none'}
-    <div class="empty">No lyrics found for this one.</div>
+    <div class="empty"><span class="label">Lyrics</span>No lyrics found for this one.</div>
   {:else}
     <div class="scroller" role="presentation" bind:this={scroller} onwheel={onWheel} ontouchmove={onWheel}>
       <div class="pad-top"></div>
@@ -167,9 +167,9 @@
     </div>
     <div class="credit">
       {#if result.kind === 'timed'}
-        {result.lyrics.source} · {result.lyrics.timing === 'exact' ? 'word-synced' : 'line-synced, words estimated'}
+        Lyrics · {result.lyrics.source} · {result.lyrics.timing === 'exact' ? 'word-synced' : 'line-synced · words estimated'}
       {:else}
-        {result.source} · not synced
+        Lyrics · {result.source} · not synced
       {/if}
     </div>
   {/if}
@@ -182,17 +182,19 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    --fs: calc(clamp(30px, 3.6vw, 56px) * var(--size, 1));
+    --fs: calc(clamp(26px, 2.9vw, 44px) * var(--size, 1));
   }
   .compact {
-    --fs: calc(26px * var(--size, 1));
+    --fs: calc(24px * var(--size, 1));
   }
   .scroller {
     flex: 1;
     overflow-y: auto;
+    overscroll-behavior: contain;
     scrollbar-width: none;
-    mask-image: linear-gradient(transparent, #000 16%, #000 78%, transparent);
-    padding: 0 8px;
+    mask-image: linear-gradient(transparent, #000 14%, #000 80%, transparent);
+    -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 80%, transparent);
+    padding: 0 4px;
   }
   .scroller::-webkit-scrollbar {
     display: none;
@@ -203,39 +205,48 @@
   .pad-bottom {
     height: 60%;
   }
+
+  /* ---- lines: crisp Geist, no blur; only colour and transform move ---- */
   .line {
-    font: 400 var(--fs) / 1.08 var(--serif);
-    letter-spacing: -0.015em;
-    padding: 12px 18px;
-    margin: 4px 0;
-    border-radius: 22px;
+    font: 700 var(--fs) / 1.15 var(--sans);
+    letter-spacing: -0.03em;
+    padding: 10px 14px;
+    margin: 2px 0;
+    border-radius: 10px;
     cursor: pointer;
-    color: rgb(255 255 255 / 0.28);
+    color: rgb(255 255 255 / 0.22);
     transform-origin: left center;
-    transform: scale(0.94);
-    filter: blur(calc(var(--dist, 0) * 0.9px));
-    transition: transform 0.7s var(--ease), color 0.5s var(--ease), filter 0.6s var(--ease);
+    transform: scale(0.97);
+    transition:
+      transform 0.3s var(--ease),
+      color 0.25s var(--ease),
+      background 0.15s;
     text-wrap: balance;
   }
-  .compact .line {
-    filter: none;
-  }
   .line:hover {
-    background: rgb(255 255 255 / 0.05);
-    filter: none;
-    color: rgb(255 255 255 / 0.55);
+    background: rgb(255 255 255 / 0.035);
+    color: rgb(255 255 255 / 0.5);
   }
   .line:global(.past) {
-    color: rgb(255 255 255 / 0.4);
+    color: rgb(255 255 255 / 0.35);
+  }
+  .line:global(.past):hover {
+    color: rgb(255 255 255 / 0.5);
   }
   .line:global(.active) {
     transform: none;
-    filter: none;
-    color: rgb(255 255 255 / 0.3);
+    color: rgb(255 255 255 / 0.32);
+  }
+  .line:global(.active):hover {
+    background: none;
+  }
+  .line.plain {
+    cursor: default;
   }
   .line.plain:global(.active) {
     color: #fff;
   }
+
   .w {
     --p: 0;
   }
@@ -243,15 +254,20 @@
     --p: 1;
   }
   .line:global(.active) .w {
-    /* Words fill with light as they're sung, glowing in the song's colour. */
-    background: linear-gradient(90deg, #fff calc(var(--p) * 100% - 10%), rgb(255 255 255 / 0.3) calc(var(--p) * 100% + 10%));
+    /* Sung part pure white, unsung dim; a soft edge travels through the word. */
+    background: linear-gradient(
+      90deg,
+      #fff calc(var(--p) * 100% - 8%),
+      rgb(255 255 255 / 0.32) calc(var(--p) * 100% + 8%)
+    );
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
     display: inline-block;
     white-space: pre;
-    transform: translateY(calc(min(var(--p), 1 - var(--p)) * -5px));
-    filter: drop-shadow(0 0 calc(var(--p) * 14px) rgb(var(--tint) / calc(var(--p) * 0.7)));
+    transform: translateY(calc(min(var(--p), 1 - var(--p)) * -3px));
+    /* Only the word being sung (0 < p < 1) gets a faint accent halo. */
+    text-shadow: 0 0 18px rgb(var(--accent-rgb) / calc(min(var(--p), 1 - var(--p)) * 0.7));
     transition: transform 0.14s;
   }
   .line:global(.past) .w,
@@ -260,15 +276,20 @@
   }
   .roman {
     display: block;
-    font: 500 0.36em/1.3 var(--sans);
-    letter-spacing: 0;
-    opacity: 0.7;
-    margin-top: 6px;
+    font: 500 0.4em/1.35 var(--sans);
+    letter-spacing: -0.005em;
+    color: rgb(255 255 255 / 0.4);
+    margin-top: 4px;
   }
+  .line:global(.active) .roman {
+    color: rgb(255 255 255 / 0.62);
+  }
+
+  /* ---- interludes: three accent dots ---- */
   .interlude {
     display: flex;
-    gap: 12px;
-    padding: 22px 18px;
+    gap: 10px;
+    padding: 20px 14px;
     cursor: default;
   }
   .interlude:hover {
@@ -276,20 +297,16 @@
   }
   .dot {
     --p: 0;
-    width: 13px;
-    height: 13px;
+    width: 11px;
+    height: 11px;
     border-radius: 50%;
-    background: rgb(255 255 255 / calc(0.2 + var(--p) * 0.8));
-    box-shadow: 0 0 calc(var(--p) * 16px) rgb(var(--tint));
-    transform: scale(calc(0.8 + var(--p) * 0.4));
+    background: rgb(var(--accent-rgb) / calc(0.2 + var(--p) * 0.8));
+    transform: scale(calc(0.8 + var(--p) * 0.35));
     transition: transform 0.2s;
-  }
-  .interlude:not(:global(.active)) .dot {
-    opacity: 0.4;
   }
   .interlude:not(:global(.active)) {
     height: 0;
-    padding: 0 18px;
+    padding: 0 14px;
     overflow: hidden;
     opacity: 0;
   }
@@ -298,28 +315,40 @@
   }
   @keyframes breathe {
     50% {
-      transform: scale(1.07);
+      transform: scale(1.06);
     }
   }
+
+  /* ---- credit & states ---- */
   .credit {
     position: absolute;
-    bottom: 6px;
-    left: 26px;
-    font-size: 11px;
-    color: var(--text-3);
+    bottom: 4px;
+    left: 18px;
+    font: 500 10.5px/1 var(--mono);
+    font-feature-settings: 'zero', 'ss01';
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-4);
+    pointer-events: none;
   }
   .empty {
     margin: auto;
-    font: italic 400 30px var(--serif);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    font: 600 22px/1.2 var(--sans);
+    letter-spacing: -0.03em;
     color: var(--text-2);
+    text-align: center;
   }
   .loading {
     display: flex;
     flex-direction: column;
-    gap: 22px;
-    padding: 30% 20px 0;
+    gap: 20px;
+    padding: 30% 14px 0;
   }
   .loading .skeleton {
-    height: calc(var(--fs) * 0.85);
+    height: calc(var(--fs) * 0.8);
   }
 </style>

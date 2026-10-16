@@ -10,6 +10,8 @@
   import { ui } from '../lib/ui.svelte';
   import { artistLine, type Track } from '../lib/sources/types';
   import { debounce } from '../lib/util/format';
+  import { STEERS } from '../lib/taste/recommend';
+  import { toasts } from '../lib/toasts.svelte';
 
   type Item =
     | { kind: 'search'; label: string }
@@ -24,13 +26,27 @@
 
   const ACTIONS: Extract<Item, { kind: 'action' }>[] = [
     { kind: 'action', label: 'Play / pause', icon: 'play', run: () => player.toggle(), keys: 'Space' },
-    { kind: 'action', label: 'Next track', icon: 'next', run: () => player.next(), keys: 'Shift →' },
-    { kind: 'action', label: 'Previous track', icon: 'prev', run: () => player.prev(), keys: 'Shift ←' },
+    { kind: 'action', label: 'Next track', icon: 'next', run: () => player.next(), keys: '⇧ →' },
+    { kind: 'action', label: 'Previous track', icon: 'prev', run: () => player.prev(), keys: '⇧ ←' },
     { kind: 'action', label: 'Show lyrics', icon: 'lyrics', run: () => (ui.lyricsOpen = true), keys: 'L' },
     { kind: 'action', label: 'Show queue', icon: 'queue', run: () => (ui.queueOpen = true), keys: 'Q' },
     { kind: 'action', label: 'Toggle shuffle', icon: 'shuffle', run: () => player.toggleShuffle(), keys: 'S' },
     { kind: 'action', label: 'Cycle repeat', icon: 'repeat', run: () => player.cycleRepeat(), keys: 'R' },
     { kind: 'action', label: 'Like current song', icon: 'heart', run: () => player.current && library.toggleLike(player.current), keys: 'F' },
+    { kind: 'action', label: 'More like this', icon: 'wand', run: () => player.moreLikeThis(), keys: '⇧M' },
+    { kind: 'action', label: 'Toggle sidebar', icon: 'sidebar', run: () => library.updateSettings({ sidebar: !library.settings.sidebar }), keys: 'B' },
+    { kind: 'action', label: 'Sleep timer: 30 min', icon: 'timer', run: () => player.setSleep(30) },
+    { kind: 'action', label: 'Sleep timer: end of song', icon: 'timer', run: () => player.setSleep('end') },
+    ...STEERS.map((st) => ({
+      kind: 'action' as const,
+      label: `Steer: ${st.label}`,
+      icon: 'steer',
+      run: () => {
+        player.setSteer(st.id);
+        toasts.show(`Steering up next: ${st.label}`);
+      },
+    })),
+    { kind: 'action', label: 'Your sound', icon: 'sparkles', run: () => router.go({ name: 'taste' }) },
     { kind: 'action', label: 'Go to library', icon: 'library', run: () => router.go({ name: 'library' }) },
     { kind: 'action', label: 'Go home', icon: 'home', run: () => router.go({ name: 'home' }) },
     { kind: 'action', label: 'Settings', icon: 'settings', run: () => (ui.settingsOpen = true) },
@@ -113,21 +129,28 @@
       <kbd>Esc</kbd>
     </div>
     <div class="results scroll" role="listbox">
+      {#if !q.trim() && items.length}<div class="sec label">Recent &amp; quick actions</div>{/if}
       {#each items as it, i (i)}
         <button class="item" class:sel={i === sel} role="option" aria-selected={i === sel} onmouseenter={() => (sel = i)} onclick={() => run(it)}>
           {#if it.kind === 'search'}
-            <span class="ic"><Icon name="search" size={16} /></span><span class="label ellipsis">{it.label}</span><span class="note">Search</span>
+            <span class="ic"><Icon name="search" size={16} /></span><span class="lbl ellipsis">{it.label}</span><span class="note">Search</span>
           {:else if it.kind === 'track'}
-            <Art src={it.track.art} size={32} />
-            <span class="label ellipsis">{it.track.title} <span class="muted">· {artistLine(it.track)}</span></span><span class="note">{it.note}</span>
+            <span class="ic"><Art src={it.track.art} size={28} /></span>
+            <span class="lbl ellipsis">{it.track.title} <span class="by">{artistLine(it.track)}</span></span><span class="note">{it.note}</span>
           {:else if it.kind === 'playlist'}
-            <span class="ic"><Icon name="library" size={16} /></span><span class="label ellipsis">{it.label}</span><span class="note">Playlist</span>
+            <span class="ic"><Icon name="library" size={16} /></span><span class="lbl ellipsis">{it.label}</span><span class="note">Playlist</span>
           {:else}
-            <span class="ic"><Icon name={it.icon} size={16} /></span><span class="label ellipsis">{it.label}</span>
+            <span class="ic"><Icon name={it.icon} size={16} /></span><span class="lbl ellipsis">{it.label}</span>
             {#if it.keys}<kbd>{it.keys}</kbd>{:else}<span class="note">Command</span>{/if}
           {/if}
         </button>
       {/each}
+    </div>
+    <div class="foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+      <span><kbd>↵</kbd> {items[sel]?.kind === 'search' ? 'search' : items[sel]?.kind === 'track' ? 'play radio' : 'open'}</span>
+      <span class="sp"></span>
+      <span class="num">{items.length} results</span>
     </div>
   </div>
 </div>
@@ -141,7 +164,7 @@
     justify-content: center;
     align-items: flex-start;
     padding-top: 12vh;
-    background: rgb(0 0 0 / 0.35);
+    background: rgb(0 0 0 / 0.55);
     animation: fade 0.12s;
   }
   @keyframes fade {
@@ -154,17 +177,18 @@
     max-height: 64vh;
     display: flex;
     flex-direction: column;
-    border-radius: 28px;
-    background: rgb(16 12 28 / 0.82);
-    backdrop-filter: blur(40px) saturate(1.4);
-    box-shadow: var(--glass-edge), 0 40px 100px rgb(0 0 0 / 0.6);
-    box-shadow: 0 40px 100px rgb(0 0 0 / 0.6);
+    border-radius: 14px;
+    background: var(--bg-1);
+    box-shadow: inset 0 0 0 1px var(--hair-2), 0 30px 80px rgb(0 0 0 / 0.6);
     overflow: hidden;
-    animation: pop 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+    animation: pop 0.14s var(--ease);
+  }
+  .palette:focus-visible {
+    outline: none;
   }
   @keyframes pop {
     from {
-      transform: scale(0.97) translateY(-6px);
+      transform: scale(0.985) translateY(-4px);
       opacity: 0;
     }
   }
@@ -173,7 +197,8 @@
     align-items: center;
     gap: 12px;
     padding: 0 16px;
-    height: 64px;
+    height: 56px;
+    flex: none;
     border-bottom: 1px solid var(--hair);
     color: var(--text-3);
   }
@@ -182,39 +207,98 @@
   }
   input {
     flex: 1;
+    min-width: 0;
     background: none;
     border: 0;
     outline: none;
-    font: italic 400 24px var(--serif);
+    font: 450 18px var(--sans);
+    letter-spacing: -0.02em;
     color: var(--text);
+  }
+  input::placeholder {
+    color: var(--text-4);
   }
   .results {
     padding: 6px;
   }
+  .sec {
+    padding: 8px 10px 6px;
+    color: var(--text-4);
+  }
   .item {
+    position: relative;
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 12px;
-    height: 44px;
-    padding: 0 10px;
-    border-radius: 10px;
+    gap: 10px;
+    height: 40px;
+    padding: 0 10px 0 8px;
+    border-radius: 8px;
     text-align: left;
-  }
-  .item.sel {
-    background: rgb(var(--tint) / 0.14);
-  }
-  .ic {
-    width: 32px;
-    display: grid;
-    place-items: center;
+    font-size: 13.5px;
     color: var(--text-2);
   }
-  .label {
+  .item.sel {
+    background: var(--bg-3);
+    color: var(--text);
+  }
+  .item.sel::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 10px;
+    bottom: 10px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--accent);
+  }
+  .ic {
+    flex: none;
+    width: 28px;
+    display: grid;
+    place-items: center;
+    color: var(--text-3);
+  }
+  .item.sel .ic {
+    color: var(--text);
+  }
+  .lbl {
     flex: 1;
+    min-width: 0;
+  }
+  .by {
+    margin-left: 6px;
+    color: var(--text-3);
   }
   .note {
-    font-size: 12px;
+    flex: none;
+    font: 11px var(--mono);
+    color: var(--text-4);
+  }
+  .item.sel .note {
     color: var(--text-3);
+  }
+  .foot {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: none;
+    height: 34px;
+    padding: 0 14px;
+    border-top: 1px solid var(--hair);
+    font: 11px var(--mono);
+    color: var(--text-4);
+  }
+  .foot span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .foot kbd {
+    padding: 2px 4px;
+    font-size: 10px;
+  }
+  .sp {
+    flex: 1;
   }
 </style>

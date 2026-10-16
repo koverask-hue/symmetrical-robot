@@ -11,7 +11,7 @@
 
 <div class="art" class:round style:width={dim} style:height={dim} style:--r="{radius}px">
   {#if src && !failed}
-    <img {src} {alt} loading="lazy" decoding="async" draggable="false" onerror={() => (failed = true)} />
+    <img {src} {alt} draggable="false" onerror={() => (failed = true)} />
   {/if}
 </div>
 

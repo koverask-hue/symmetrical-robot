@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import Icon from '../components/Icon.svelte';
   import Loading from '../components/Loading.svelte';
   import MixCard from '../components/MixCard.svelte';
@@ -18,8 +19,10 @@
   const yt = loader(() => source.home());
   yt.run();
 
+  // Only `loaded` is a dependency. buildMixes reads (and writes) store state before its
+  // first await; tracking that would re-run this effect after every build, forever.
   $effect(() => {
-    if (taste.loaded && taste.state.onboarded) void taste.buildMixes();
+    if (taste.loaded) untrack(() => taste.state.onboarded && void taste.buildMixes());
   });
 
   // The clock in the header ticks quietly.

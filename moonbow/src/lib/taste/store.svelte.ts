@@ -169,8 +169,10 @@ class Taste {
 
   async buildMixes(force = false) {
     if (this.building) return;
+    // Fresh means "built recently and not much has changed", whether or not a mix came out
+    // of it: with little listening data there may be no mix yet, and that must not cause a rebuild loop.
     const fresh = Date.now() - this.#builtAt < REBUILD_EVERY && this.version - this.#builtVersion < 8;
-    if (!force && fresh && this.mixes.now) return;
+    if (!force && fresh) return;
     this.building = true;
     try {
       const c = this.ctx();

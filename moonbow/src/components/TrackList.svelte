@@ -76,7 +76,7 @@
         {/if}
         {#if showArt}
           <span class="art">
-            {#if t.art}<img src={t.art} alt="" loading="lazy" decoding="async" draggable="false" />{/if}
+            {#if t.art}<img src={t.art} alt="" decoding="async" draggable="false" />{/if}
             <span class="ov" class:show={current && player.playing && !numbered}>
               {#if current && player.playing && !numbered}
                 <span class="eq"><i></i><i></i><i></i></span>

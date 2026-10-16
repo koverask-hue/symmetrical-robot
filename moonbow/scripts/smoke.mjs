@@ -34,6 +34,7 @@ const step = async (name, fn) => {
 const assert = (cond, msg) => {
   if (!cond) throw new Error(msg);
 };
+const side = page.getByRole('complementary', { name: 'Sidebar' });
 const palette = async (text) => {
   await page.keyboard.press('Control+k');
   await page.keyboard.type(text);
@@ -99,15 +100,15 @@ try {
   });
 
   await step('feedback', async () => {
-    await page.getByRole('button', { name: 'More like this' }).click();
-    await page.locator('.toast', { hasText: 'More like' }).waitFor();
+    await page.getByRole('button', { name: 'More like this' }).first().click();
+    await page.locator('.toast', { hasText: /more like/i }).waitFor();
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Not for me' }).click();
     await page.locator('.toast', { hasText: 'Less like' }).waitFor();
   });
 
   await step('your sound', async () => {
-    await page.getByRole('button', { name: 'Your sound' }).click();
+    await side.getByRole('button', { name: 'Your sound' }).click();
     await page.getByRole('heading', { name: /What I know about/ }).waitFor();
     await page.locator('main .sky canvas').waitFor();
     await page.waitForTimeout(2000);
@@ -115,8 +116,8 @@ try {
 
   await step('library', async () => {
     await page.keyboard.press('f');
-    await page.getByRole('button', { name: 'Library' }).click();
-    await page.getByRole('heading', { name: /Everything you/ }).waitFor();
+    await side.getByRole('button', { name: /Liked songs/ }).click();
+    await page.getByRole('heading', { name: /Your library/ }).waitFor();
     await page.locator('.list .row').first().waitFor();
   });
 
@@ -127,7 +128,7 @@ try {
   });
 
   await step('home again', async () => {
-    await page.getByRole('button', { name: 'For you' }).click();
+    await side.getByRole('button', { name: 'For you' }).click();
     await page.locator('.hero').waitFor();
     await page.waitForTimeout(1200);
   });

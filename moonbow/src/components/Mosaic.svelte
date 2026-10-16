@@ -7,9 +7,9 @@
 
 <div class="mosaic" class:grid={shown.length >= 4} style:width={dim} style:height={dim} style:--r="{radius}px">
   {#if shown.length >= 4}
-    {#each shown as src (src)}<img {src} alt="" loading="lazy" draggable="false" />{/each}
+    {#each shown as src (src)}<img {src} alt="" draggable="false" />{/each}
   {:else if shown[0]}
-    <img src={shown[0]} alt="" loading="lazy" draggable="false" />
+    <img src={shown[0]} alt="" draggable="false" />
   {/if}
   {#if label}<span class="tag">{label}</span>{/if}
 </div>

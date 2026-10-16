@@ -33,15 +33,18 @@ Recommendations are **personalised PageRank** over the song graph, seeded by you
 
 ## Design
 
-1. **The song is the theme.** Every accent, glow and the sky itself come from the cover that's playing.
-2. **Editorial, not dashboard.** Instrument Serif headlines, Geist for the interface, generous space, few lines.
-3. **Light, not boxes.** Depth from blur, glow and film grain instead of borders and grids.
-4. **It shows its work.** Personal surfaces explain themselves.
-5. **Calm motion.** One easing curve, and reduced motion is respected.
+Black, clean, one accent.
 
-The sky is a WebGL shader: aurora curtains in the cover's colours that rise and brighten with the bass, and stars that twinkle with the treble.
+- **Surfaces:** near-black in four steps with hairline borders. No glass over moving content, no blur, no WebGL, so it stays fast.
+- **Type:** Geist for everything you read, Geist Mono for the small facts: times, counts, the codec badge (`OPUS · 160`), labels and the reason on every pick.
+- **One accent colour:** Volt lime by default; Ice, Ember, Orchid or Silver in Settings. The playing cover only adds a faint ambient glow.
+- **One player:** the bottom bar is the only set of controls. The lyrics stage shows the cover and the words, nothing duplicated.
 
 ## Also
+
+- **Sidebar** like Spotify, Tidal and Apple Music: For you, Search, Your sound, Liked songs, Recently played, saved Albums, followed Artists, your mixes and your playlists. Collapse it with `B`.
+- **Steer what plays next:** Similar, Discover, Favorites or This artist, from the player bar or the queue. Autoplay is anchored on the song playing, so the next one is always close to it. **More like this** (`⇧M`) rebuilds what's coming right now.
+- **Follow artists, save albums** (both feed the taste model), **sleep timer**, **volume normalization**, and the next song shown under the progress bar.
 
 - **Lyrics**: word-by-word karaoke in serif type that glows in the song's colour. Uses exact word timing when LRCLIB has it, otherwise estimates it from syllables. Click a line to seek, nudge timing per song (`[` `]`), romanize Cyrillic, Greek, Korean and kana.
 - **Playback**: gapless (the next song is buffered on a second deck), optional crossfade, OS media keys.

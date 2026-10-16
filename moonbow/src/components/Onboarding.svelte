@@ -95,7 +95,7 @@
           {#each wall as a (a.id)}
             <button class="artist" class:on={isPicked(a)} onclick={() => toggle(a)} aria-pressed={isPicked(a)}>
               <span class="ph">
-                {#if a.art}<img src={a.art} alt="" loading="lazy" />{:else}<span class="initial" aria-hidden="true">{a.title[0]}</span>{/if}
+                {#if a.art}<img src={a.art} alt="" />{:else}<span class="initial" aria-hidden="true">{a.title[0]}</span>{/if}
                 {#if isPicked(a)}<span class="tick"><Icon name="check" size={12} stroke={2.6} /></span>{/if}
               </span>
               <span class="nm ellipsis">{a.title}</span>
